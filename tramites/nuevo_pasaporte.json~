@@ -1,0 +1,38 @@
+{
+    "Tramite": "pasaporte",
+    "CodigoInterno": "122122223", 
+    "Identificacion": "Pedro Savorido - Los Andes 25", 
+    "Variables":
+       [
+	   {
+	       "Nombre" : "turno",
+	       "Codigo": "22",
+               "Tipo": "Texto",
+               "Vector": "No",
+               "PorDefecto": "",
+               "Valor": "",
+               "Pedir": "Si",
+               "Caption": "¿Tenés turno asignado? (sí/no)"
+	   },
+	   {
+	       "Nombre" : "pago",
+	       "Codigo": "23",
+               "Tipo": "Texto",
+               "Vector": "No",
+               "PorDefecto": "",
+               "Valor": "",
+               "Pedir": "Si",
+               "Caption": "¿Realizaste el pago? (sí/no)"
+	   },
+	   {
+	       "Nombre" : "foto actualizada",
+	       "Codigo": "24",
+               "Tipo": "Texto",
+               "Vector": "No",
+               "PorDefecto": "",
+               "Valor": "",
+               "Pedir": "Si",
+               "Caption": "¿Traés una foto carnet actualizada?"
+	   }
+       ]
+}

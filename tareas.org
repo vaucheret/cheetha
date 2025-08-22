@@ -1,0 +1,72 @@
+* DONE Inspeccionar las entradas de usuario
+    Junto con el tipo de Variable extraer lo necesario Ej: Numero, Fecha, Texto, etc.
+      
+    
+* DONE Generar pregunta con Opciones
+
+* DONE Hacerlo multiusuario
+   guardar estado de Usuario/Instancia de tramite
+
+* DONE implemetar kafka real en linea
+** Ver como escalar y mantener la interface con MCP : (Model Context Protocol)
+
+* DONE Traer listado de tramites desde un solo json
+* DONE Hacer whatsapp con numero dedicado y Cloud API de Meta
+
+** entrar en https://developers.facebook.com/ y buscar chita con chatbot
+
+** ngrok http http://localhost:8080
+  poner  en meta  el webhook nuevo con el token de verificacion.
+
+    
+** token de verificacion
+   mitokendeverificacion1739
+
+** numero
+    ‎15551570498
+
+** ID del numero de telefono
+   703793806159035 
+
+** WhatsApp Business Account ID
+   24925813000353118
+
+** token de acceso temporal
+   EAAUOKrSkM2QBPO0M5R7ZCLTiJBdx3dSQlDhlu0qyRtuLsuWvytZBTaNjXok1LXYzY5AfTdh6sy9JtJogOJEo8sXYLuUfjtZBXA0oKrZBCHXBCAWZAybZCGY2Pi8nNLqwqIVyAD6C2tRFm4QcxVUjpnw75fZBu7lQZC3Hgsl6aL27WBlRHunJZAyIb30NStaBsVzkmp1f4Sm1xLha78Q5mtFbeqO7OZBPHXX5EkDjgadam1ShysnGEDFK1B4AjFgac1QUQZD
+   EAAUOKrSkM2QBPEmakQliSJtP43XznrYD2ZCRZCwKu0BMMUhnbGIo9F1PBeiXZBUnAWYsxwWzi1FHQZAcvCfvaIF76RwjzDg8j6Gpa6jDvAbvUoZAfSZAzGYeM9O93k568U4oVtLdInq99CCN86EfgBfcS9cg1q0ljPoAOdDBMu88qs4khRCQBLIPwtx27eokSZCEvGZBTaKTBxxvofZBYxXYABaTDKmPF9wtAsF9wYRn5E9djigFhXGHwzCxZCJGXgTQZDZD
+   EAAUOKrSkM2QBPIef2FaZABfc7vMv1F2iAea5wEBwP4v3RGqZBTFvCbZBFSJLrHNZB5mfRafslprqtGSXGDEWe8bMD3jYJIZAHJgSuNxetcaat7LEBsY3n3Qa643iQY1y8OyvOVtZAmnpplRlswZBJXMX8QQBNJIbm1uIdcZAqDIx0gzSrn2Q9bho2zueNhbpHIrAQwrXe5890LfduDs70f6ovDK0HcQ9G7aWTnzR8NRHmhxxFJnQcnrgeUalUoJ9nQZDZD
+
+** curl mensaje de prueba
+   curl -i -X POST `
+  https://graph.facebook.com/v22.0/703793806159035/messages `
+  -H 'Authorization: Bearer EAAUOKrSkM2QBPIef2FaZABfc7vMv1F2iAea5wEBwP4v3RGqZBTFvCbZBFSJLrHNZB5mfRafslprqtGSXGDEWe8bMD3jYJIZAHJgSuNxetcaat7LEBsY3n3Qa643iQY1y8OyvOVtZAmnpplRlswZBJXMX8QQBNJIbm1uIdcZAqDIx0gzSrn2Q9bho2zueNhbpHIrAQwrXe5890LfduDs70f6ovDK0HcQ9G7aWTnzR8NRHmhxxFJnQcnrgeUalUoJ9nQZDZD' `
+  -H 'Content-Type: application/json' `
+  -d '{ \"messaging_product\": \"whatsapp\", \"to\": \"542995301481\", \"type\": \"template\", \"template\": { \"name\": \"hello_world\", \"language\": { \"code\": \"en_US\" } } }'
+
+** codigos de ngrok
+  MPESMXWQKE
+  5AQJ6N2U6Z
+  5M2R5RZJH5
+  KYU3CVUBJG
+  H8Z5H2R8AG
+  UDTJVYAWHX
+  KP5M6Y8U7H
+  CJ5BUXDNHD
+  VZH39YJHE6
+  8F4RAZNPGA
+
+** authotoken ngrok
+  31HdOAJJ3ShxVnAO3iskr5pKcR8_477NKyHikSFX6cUKkuPdo
+
+* DONE interface de voz
+
+* Limpiar Dialogo
+
+* que pasa cuando falla extraer_respuesta_por_tipo
+
+* ver
+   https://github.com/chep/copilot-chat.el
+
+* TODO Preguntar dinamicamente listado de Variables a Preguntar
+
+* agregar deepseek 

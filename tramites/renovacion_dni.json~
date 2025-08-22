@@ -1,0 +1,28 @@
+{
+    "Tramite": "DNI",
+    "CodigoInterno": "3333122222", 
+    "Identificacion": "Anastasio Perez - Los Andes 25", 
+    "Variables":
+    [
+	{
+	    "Nombre": "turno",
+	    "Codigo": "32",
+            "Tipo": "boolenao",
+            "Vector": "No",
+            "PorDefecto": "",
+            "Valor": "",
+            "Pedir": "Si",
+            "Caption": "¿Tenés turno asignado? (sí/no)"
+	},
+	{
+	    "dato": "DNI vigente",
+	    "Codigo": "33",
+            "Tipo": "booleano",
+            "Vector": "No",
+            "PorDefecto": "",
+            "Valor": "",
+            "Pedir": "Si",
+	    "Caption": "¿Tenés el DNI vigente? (sí/no)"
+	}
+    ]
+} 

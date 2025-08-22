@@ -1,0 +1,28 @@
+{
+    "Tramite": "partida de nacimiento",
+    "CodigoInterno": "999122222", 
+    "Identificacion": "Juan Saborido - Los Andes 25", 
+    "Variables":
+    [
+	{
+	    "Nombre": "turno",
+	    "Codigo": "42",
+            "Tipo": "booleano",
+            "Vector": "No",
+            "PorDefecto": "",
+            "Valor": "",
+            "Pedir": "Si",
+            "Caption": "¿Tenés turno asignado? (sí/no)"
+	},
+	{
+	    "Nombre": "acta de nacimiento",
+	    "Codigo": "44",
+            "Tipo": "booleano",
+            "Vector": "No",
+            "PorDefecto": "",
+            "Valor": "",
+            "Pedir": "Si",
+	    "Caption": "¿Contás con el acta de nacimiento?"
+	}
+    ]
+}

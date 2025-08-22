@@ -1,0 +1,90 @@
+---------------------- proxy whatsapp -------------------------------
+
+pip3 install flask requests
+
+pip install  kafka-python
+
+python3 flask_whatsapp_proxy.py 
+curl -X POST http://localhost:8080/webhook \
+  -H "Content-Type: application/json" \
+  -d '{
+        "sender": "1234567890",
+        "message": { "text": "¿Cómo renuevo el DNI?" }
+      }'
+
+curl -X POST http://localhost:5005/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": { "text": "¿Cómo renuevo el DNI?" }}'
+
+
+
+
+sudo apt update
+sudo apt install nodejs npm
+
+mkdir whatsapp-proxy && cd whatsapp-proxy
+npm init -y
+
+npm install whatsapp-web.js qrcode-terminal axios
+
+node index.js
+
+ (requiere Node ≥ 18)
+
+
+
+sudo npm install -g n
+sudo n 18
+
+----------------------------------- kafka ------------------------------------------
+
+sudo apt install python3 pip3 python3-kafka default-jdk unzip
+cd /opt/
+sudo wget https://archive.apache.org/dist/kafka/3.7.0/kafka_2.13-3.7.0.tgz 
+sudo tar -xvzf kafka_2.13-3.7.0.tgz
+sudo mv kafka_2.13-3.7.0 kafka
+sudo mkdir /opt/kafka/logs
+sudo chown -R $USER:$USER /opt/kafka 
+cd kafka/
+bin/zookeeper-server-start.sh config/zookeeper.properties
+
+
+(otra terminal)
+cd /opt/kafka/
+bin/kafka-server-start.sh config/server.properties
+
+(otra terminal)
+cd /opt/kafka/
+bin/kafka-topics.sh --create --topic tramites --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
+(test)
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+
+---------------------------------- ngrok .....
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+  | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
+  && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
+  | sudo tee /etc/apt/sources.list.d/ngrok.list \
+  && sudo apt update \
+  && sudo apt install ngrok
+
+ngrok config add-authtoken 31HdOAJJ3ShxVnAO3iskr5pKcR8_477NKyHikSFX6cUKkuPdo
+
+ngrok http http://localhost:8080
+
+------------------------------- whatsapp full --------------------
+
+pip install requests openai
+pip3 install phonenumbers
+
+-------------------------------- setup whatsapp -----------
+1. levantar el chatbot ( start_server(8000). )
+2. levantar el kafka_bridge.py ( python3 kafka_bridge.py )
+3. levantar el sistema_motor.py (provisorio) (python3 sistema_motor.py)
+4. ir a configuracion de la api y generar token de accesso temporal
+5. ponerlo en flack_cloud y levantarlo
+6. llamar al ngrok http http://localhost:8080
+7. verificar el webhooks  con  direccionngrok/webhook y mitokendeverificacion1739
+
+   
