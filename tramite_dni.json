@@ -1,0 +1,22 @@
+{
+  "CodigoInterno":"3333122222",
+  "Identificacion":"Anastasio Perez - Los Andes 25",
+  "Tramite":"dni",
+  "Usuario":"usuario1",
+  "Variables": [
+    {
+      "Caption":"¿Tenés el numero actual de tu dni? (sí/no)",
+      "Codigo":"32",
+      "Opciones": [],
+      "Tipo":"numero",
+      "Valor":"17506331"
+    },
+    {
+      "Caption":"¿Tenés el DNI vigente? (sí/no)",
+      "Codigo":"33",
+      "Opciones": [],
+      "Tipo":"booleano",
+      "Valor":"si"
+    }
+  ]
+}

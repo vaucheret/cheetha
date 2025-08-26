@@ -60,13 +60,13 @@
 
 * DONE interface de voz
 
-* Limpiar Dialogo
+* DONE Hacer Repositorio
 
-* que pasa cuando falla extraer_respuesta_por_tipo
-
-* ver
-   https://github.com/chep/copilot-chat.el
+* TODO que devuelva audios
+* DONE Limpiar Dialogo
+* DONE que pasa cuando falla extraer_respuesta_por_tipo
 
 * TODO Preguntar dinamicamente listado de Variables a Preguntar
 
-* agregar deepseek 
+* TODO agregar deepseek 
+* TODO MCP 

@@ -77,15 +77,15 @@ chat_loop :-
 
 dialogo(UserID,Line, Respuesta) :-
     retract(historia(UserID,Hist0)),
+    string_codes(Line,LineS),
     (
-	string_codes(Line,LineS),
 	phrase((..., terminar, ...), LineS) ->
         Respuesta = "¡Hasta luego! Gracias por consultar",
         inicio(H0),
 	assertz(historia(UserID,H0))
     ;
     (
-	intencion(Line, iniciar_tramite(T)),
+	intencion(LineS, iniciar_tramite(T)),
 	flujo_tramite(T,[Paso|Pasos]) ->
         generar_pregunta_chatgpt(T,Paso,Respuesta),
         assertz(estado(UserID,[user-Line|Hist0],T,[Paso|Pasos]))
@@ -103,8 +103,8 @@ dialogo(UserID,Line, Respuesta) :-
 
 dialogo(UserID,Line, Respuesta) :-
     retract(estado(UserID,Hist0, Tramite, [Paso|R])),
+    string_codes(Line,LineS),
     (
-	string_codes(Line,LineS),
 	phrase((..., terminar, ...), LineS) ->
         Respuesta = "Trámite cancelado.",
 	inicio(HN),
@@ -112,35 +112,43 @@ dialogo(UserID,Line, Respuesta) :-
     ;
     (
 	Paso = paso(Id,_,Tipo,_),
-	extraer_respuesta_por_tipo(Tipo,Line,Line1),
-	assertz(dato_tramite(UserID,Tramite,Id,Line1)),
-	(
-	    R = [Next|_] ->
-            generar_pregunta_chatgpt(Tramite,Next,Respuesta),
-          assertz(estado(UserID,[user-Line|Hist0],Tramite,R))
+	(   
+	    extraer_respuesta_por_tipo(Tipo,LineS,Line1) ->
+	    assertz(dato_tramite(UserID,Tramite,Id,Line1)),
+	    (
+		R = [Next|_] ->
+		generar_pregunta_chatgpt(Tramite,Next,Respuesta),
+		assertz(estado(UserID,[user-Line|Hist0],Tramite,R))
+	    ;
+	    (
+		guardar_preguntas_cache,
+
+			    atom_concat('tramite_', Tramite, NombreBase),
+			    atom_concat(NombreBase, '.json', Archivo),
+			    format(string(Intro),"Hemos terminado el flujo para ~a.  Pronto verás los resultados o próximos pasos.\n Aquí los datos:\n",[Tramite]),
+			    findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
+			    atomic_list_concat(Ls, Body),
+			    format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
+			    exportar_datos_tramite(UserID,Tramite, Archivo),
+
+
+		%% exportar_datos_tramite_kafka(UserID,Tramite),
+
+		%% esperar_respuesta_kafka(UserID,Tramite, MensajeKafka),
+
+ 		%% format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
+		
+		inicio(HistN),
+		assertz(historia(UserID,HistN))
+	    )
+	    )
 	;
-	(
-            guardar_preguntas_cache,
-
-%	    atom_concat('tramite_', Tramite, NombreBase),
-%	    atom_concat(NombreBase, '.json', Archivo),
-%	    format(string(Intro),"Hemos terminado el flujo para ~a.  Pronto verás los resultados o próximos pasos.\n Aquí los datos:\n",[Tramite]),
-%	    findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
-%	    atomic_list_concat(Ls, Body),
-%	    format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
-%	    exportar_datos_tramite(UserID,Tramite, Archivo),
-
-
-	    exportar_datos_tramite_kafka(UserID,Tramite),
-
-	    esperar_respuesta_kafka(UserID,Tramite, MensajeKafka),
-
- 	    format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
-	    inicio(HistN),
-	    assertz(historia(UserID,HistN))
+	% repreguntar
+	    generar_repregunta_chatgpt(Tramite,Paso,Respuesta),
+	    assertz(estado(UserID,[user-Line|Hist0],Tramite,[Paso|R]))
+	
 	)
 	)
-      )
     ).
 
 dialogo(UserID,Line, Respuesta) :-
@@ -211,6 +219,28 @@ generar_pregunta_chatgpt(Tramite,Paso,Pregunta) :-
             Pregunta = Caption
         )
     )
+    ).
+
+generar_repregunta_chatgpt(Tramite,Paso,Pregunta) :-
+    Paso = paso(Codigo, Caption, Tipo, Opciones),
+    (	Opciones \== [] -> format(string(Texto)," Por favor incluir en la pregunta estas opciones de respuesta ~w",[Opciones]) ; Texto = "" ),
+    atomic_list_concat([
+        "Por favor reformular una pregunta clara y amable para pedir al usuario un dato dentro del trámite:",
+        Tramite, ".\n\n",
+        "Código del campo: ", Codigo, "\n",
+        "Tipo de dato: ", Tipo, "\n",
+        "Descripción o título: ", Caption, "\n\n",
+        "Pregunta:", Texto , "Enfatizando que la respuesta debe ser del tipo correcto."
+	      ], PromptChars),atom_string(PromptChars,Prompt),
+    catch(
+        (
+            call_chatgpt_with_context([user-Prompt], Pregunta)
+
+        ),
+        _Error,
+        (
+            Pregunta = Caption
+        )
     ).
 
 

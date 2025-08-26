@@ -7,8 +7,7 @@
 */
 
 
-extraer_respuesta_por_tipo(Tipo,Line,Line1) :-
-    string_codes(Line,LineS),
+extraer_respuesta_por_tipo(Tipo,LineS,Line1) :-
     (	Tipo == "numero" ->
 	phrase(numero(N),LineS),
 	number_string(N,Line1)
@@ -22,7 +21,7 @@ extraer_respuesta_por_tipo(Tipo,Line,Line1) :-
 	phrase(booleana(Line1),LineS)
     ;
     (
-	Line1 = Line
+	string_codes(Line1, LineS)
     )))).
 
 
@@ -32,8 +31,7 @@ prompt(you) :- write('Usuario: ').
 
 terminar --> "salir";"chau";"gracias";"hasta luego";"me voy";"nos vemos".
 
-intencion(Input, iniciar_tramite(T)) :-
-    string_codes(Input,InputS),
+intencion(InputS, iniciar_tramite(T)) :-
     phrase(respuesta_iniciar_tramite(T), InputS).
 
 
@@ -263,7 +261,7 @@ mes_nombre(12) --> "dic";"diciembre".
 booleana("si") --> ... , si, ... .
 booleana("no") --> ... , no, ... .
 
-si --> "si " ;  " si" ; "si," ; "si." ; "si" ; "afirmativamente" ; "afirmativo" .
+si --> "si " ;  " si" ; "si," ; "si." ; "si" ; "sí" ; "afirmativamente" ; "afirmativo" .
 no --> "no " ; " no" ; "no," ; "no." ; "no" ; "negativo" ; "ninguna" .
 
 
