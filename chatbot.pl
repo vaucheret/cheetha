@@ -123,20 +123,20 @@ dialogo(UserID,Line, Respuesta) :-
 	    (
 		guardar_preguntas_cache,
 
-			    atom_concat('tramite_', Tramite, NombreBase),
-			    atom_concat(NombreBase, '.json', Archivo),
-			    format(string(Intro),"Hemos terminado el flujo para ~a.  Pronto verás los resultados o próximos pasos.\n Aquí los datos:\n",[Tramite]),
-			    findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
-			    atomic_list_concat(Ls, Body),
-			    format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
-			    exportar_datos_tramite(UserID,Tramite, Archivo),
+			    %% atom_concat('tramite_', Tramite, NombreBase),
+			    %% atom_concat(NombreBase, '.json', Archivo),
+			    %% format(string(Intro),"Hemos terminado el flujo para ~a.  Pronto verás los resultados o próximos pasos.\n Aquí los datos:\n",[Tramite]),
+			    %% findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
+			    %% atomic_list_concat(Ls, Body),
+			    %% format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
+			    %% exportar_datos_tramite(UserID,Tramite, Archivo),
 
 
-		%% exportar_datos_tramite_kafka(UserID,Tramite),
+		exportar_datos_tramite_kafka(UserID,Tramite),
 
-		%% esperar_respuesta_kafka(UserID,Tramite, MensajeKafka),
+		esperar_respuesta_kafka(UserID,Tramite, MensajeKafka),
 
- 		%% format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
+ 		format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
 		
 		inicio(HistN),
 		assertz(historia(UserID,HistN))

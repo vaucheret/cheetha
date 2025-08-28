@@ -4,8 +4,8 @@ import threading
 import json
 
 app = Flask(__name__)
-# KAFKA_SERVER = 'localhost:9092'
-KAFKA_SERVER = '66.70.179.213:9092'
+KAFKA_SERVER = 'localhost:9092'
+#KAFKA_SERVER = '66.70.179.213:9092'
 
 
 # Enviar a Kafka
