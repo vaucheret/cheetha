@@ -62,7 +62,7 @@
 
 * DONE Hacer Repositorio
 
-* TODO que devuelva audios
+* DONE que devuelva audios
 * DONE Limpiar Dialogo
 * DONE que pasa cuando falla extraer_respuesta_por_tipo
 
