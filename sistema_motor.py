@@ -3,9 +3,9 @@ from kafka import KafkaConsumer, KafkaProducer
 
 # Configuración Kafka
 
-KAFKA_SERVER = 'localhost:9092'
+#KAFKA_SERVER = 'localhost:9092'
  
-# KAFKA_SERVER = '66.70.179.213:9092'
+KAFKA_SERVER = '66.70.179.213:9092'
 
 # Consumidor para 'tramites'
 consumer = KafkaConsumer(

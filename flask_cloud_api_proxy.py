@@ -12,7 +12,7 @@ app = Flask(__name__, static_url_path="/static", static_folder="static")
 # === Config ===
 PROLOG_URL = 'http://localhost:8000/chat'
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "mitokendeverificacion1739")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPTBaUOHbbtqSC7Bprcg51l10bgzl1HuGtPHguvCfl1V7TZCCqQmtpQuSAy9fVEBVApDxsfw5lSIJrysw1rkDxCxI10MvZAReRyBvnsByfGPrKRZAM8lTfdb2vbwEVDjHzq0nKXJIgZBuufXOaOemnHhKAUDZABfur3PJWd8m5bd4pSoHJ44T5dCVlUx91ZBpZAkRdgzHgL1l0VGx4cln1o6VIe6OZAb3nJRAJ5Kw1w6NKymPPGZCgikOd")
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPWnrBHBXuXiFm9o4T5zWfJ8XqAYvtEH5flZBDCeulI8KiOcXgceEC0JYy0wxfFskv3R4uhZCmvXLzwtlNIRujJJcqjXBOVbEVS43p7clsrndS161tWNC0JuSs4zQWbMlPxhgAwlgSRIngn9vBQ72iIwBrHNMHmSjG7CKZCKXJj7H9S2XG4wktZAtcHUqwvmSFpSvUK7Tftibp3VLp8wByodQOWzyLnM1oCf89koM2f0xpoaSnDIZD")
 PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "703793806159035")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -114,6 +114,21 @@ def transcribe_audio(audio_bytes):
             pass
 
 # --- Webhook ---
+
+@app.route("/webhook", methods=["GET"])
+def verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        print("✅ Webhook verificado")
+        return challenge, 200
+    else:
+        print("❌ Verificación fallida")
+        return "Forbidden", 403
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
