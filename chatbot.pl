@@ -1,4 +1,4 @@
-:- module(chatbot, [start_server/1, iniciar_chat/0]).
+:- module(chatbot, [start_server/2, iniciar_chat/1]).
 
 :- use_module(library(http/thread_httpd)).
 :- use_module(library(http/http_dispatch)).
@@ -11,6 +11,7 @@
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
 
+:- dynamic current_provider/1.
 
 :- dynamic pregunta_cache/3.
 :- dynamic historia/2.
@@ -20,8 +21,26 @@ openai_api_key(Key) :-
       getenv('OPENAI_API_KEY', Key),
       !.
 
+deepseek_api_key(Key) :-
+    %			getenv('DEEPSEEK_API_KEY', Key),
+    			getenv('OPENROUTER_API_KEY', Key),
+			!.
 
-start_server(Port) :-
+gemini_api_key(Key) :-
+    %			getenv('GEMINI_API_KEY', Key),
+    			getenv('OPENROUTER_API_KEY', Key),
+			!.
+
+
+
+
+set_provider(Provider) :-   % openai o deepseek
+    retractall(current_provider(_)),
+    assertz(current_provider(Provider)).
+
+
+start_server(Provider,Port) :-
+    set_provider(Provider),
     cargar_tramites,
     cargar_preguntas_cache,
     inicio(H),
@@ -29,7 +48,8 @@ start_server(Port) :-
     http_server(http_dispatch, [port(Port), workers(4)]).
 
 
-iniciar_chat :-
+iniciar_chat(Provider) :-
+    set_provider(Provider),
     cargar_tramites,
     cargar_preguntas_cache,
     inicio(H),
@@ -92,7 +112,7 @@ dialogo(UserID,Line, Respuesta) :-
     ;
     (
 	append(Hist0,[user-Line], H1),
-	call_chatgpt_with_context(H1, Respuesta),
+	call_llm_with_context(H1, Respuesta),
 	atom_string(Respuesta,RespuestaS),
 	append(H1,[assistant-RespuestaS],H2),
 	assertz(historia(UserID,H2))
@@ -163,23 +183,74 @@ dialogo(UserID,Line, Respuesta) :-
 % ChatGPT API integration
 % ——————————————————————————————————————
 
-call_chatgpt_with_context(HistMsgs, Response) :-
+call_llm_with_context(HistMsgs, Response) :-
+    current_provider(openai), !,
+    openai_call(HistMsgs, Response).
+
+call_llm_with_context(HistMsgs, Response) :-
+    current_provider(deepseek), !,
+    deepseek_call(HistMsgs, Response).
+
+
+call_llm_with_context(HistMsgs, Response) :-
+    current_provider(gemini), !,
+    gemini_call(HistMsgs, Response).
+
+
+openai_call(HistMsgs, Response) :-
     openai_api_key(Key),
-    build_json_dict(HistMsgs, JSONDICT),
+    build_json_dict(HistMsgs, openai, JSONDICT),
     http_post('https://api.openai.com/v1/chat/completions',
               json(JSONDICT),
               ReplyDict,
               [
-		  authorization(bearer(Key)),
-		  application/json
-	      ]),
+                  authorization(bearer(Key)),
+                  application/json
+              ]),
     extract_gpt_response(ReplyDict, Response).
 
-build_json_dict(Msgs, _{
-    model: "gpt-3.5-turbo",
+
+deepseek_call(HistMsgs, Response) :-
+    deepseek_api_key(Key),
+    build_json_dict(HistMsgs,deepseek, JSONDICT),
+%    http_post('https://api.deepseek.com/chat/completions',
+    http_post('https://openrouter.ai/api/v1/chat/completions',	      
+              json(JSONDICT),
+              ReplyDict,
+              [
+                  authorization(bearer(Key)),
+                  application/json
+              ]),
+    extract_gpt_response(ReplyDict, Response).
+
+gemini_call(HistMsgs, Response) :-
+    gemini_api_key(Key),
+    build_json_dict(HistMsgs,gemini, JSONDICT),
+%    http_post('https://api.deepseek.com/chat/completions',
+    http_post('https://openrouter.ai/api/v1/chat/completions',	      
+              json(JSONDICT),
+              ReplyDict,
+              [
+                  authorization(bearer(Key)),
+                  application/json
+              ]),
+    extract_gpt_response(ReplyDict, Response).
+
+
+
+build_json_dict(Msgs,Provider, _{
+    model: Model, 
     messages: MessagesList
 }) :-
-    maplist(to_message_obj, Msgs, MessagesList).
+    maplist(to_message_obj, Msgs, MessagesList), 
+    (
+	Provider = openai -> Model = "gpt-3.5-turbo"
+    ;
+%      Provider = deepseek -> Model = "deepseek-chat"
+        Provider = deepseek -> Model = "deepseek/deepseek-chat-v3.1:free"
+    ;	
+        Provider = gemini -> Model = "google/gemini-2.0-flash-exp:free"
+    ).
 
 to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
     atom_string(Role, SRole).
@@ -211,7 +282,7 @@ generar_pregunta_chatgpt(Tramite,Paso,Pregunta) :-
 	      ], PromptChars),atom_string(PromptChars,Prompt),
     catch(
         (
-            call_chatgpt_with_context([user-Prompt], Pregunta),
+            call_llm_with_context([user-Prompt], Pregunta),
 	    assertz(pregunta_cache(Tramite,Codigo,Pregunta))
         ),
         _Error,
@@ -234,7 +305,7 @@ generar_repregunta_chatgpt(Tramite,Paso,Pregunta) :-
 	      ], PromptChars),atom_string(PromptChars,Prompt),
     catch(
         (
-            call_chatgpt_with_context([user-Prompt], Pregunta)
+            call_llm_with_context([user-Prompt], Pregunta)
 
         ),
         _Error,
