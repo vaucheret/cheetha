@@ -112,20 +112,20 @@ exportar_datos_tramite_kafka(UserID,Tramite) :-
 crearDictJsonTramite(UserID,Tramite,Dict) :-
     flujo_tramite(Tramite,Pasos),
     maplist(completar_variable(UserID,Tramite), Pasos, ListaVariables),
-    atom_string(Tramite,TramiteS),
+%    atom_string(Tramite,TramiteS),
     codigo_interno(Tramite,CodigoInterno),
-    identificacion_tramite(Tramite,IdentificacionTramite),
-    dict_create(Dict,_,['Usuario':UserID, 'Tramite':TramiteS,'CodigoInterno':CodigoInterno,'Identificacion':IdentificacionTramite,'Variables':ListaVariables]).
+%    identificacion_tramite(Tramite,IdentificacionTramite),
+    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoInterno':CodigoInterno,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
 
-completar_variable(UserID,Tramite, paso(Id, Caption,Tipo,Opciones), P) :-
+completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
 		       retract(dato_tramite(UserID,Tramite, Id, Valor)),
 		       atom_string(Id,IdChars),
 		       dict_create(P,_,[
-				       'Codigo':IdChars,
-				       'Tipo':Tipo,
-				       'Opciones':Opciones,
-				       'Valor':Valor,
-				       'Caption':Caption
+				       'CodigoVariable':IdChars,
+%				       'Tipo':Tipo,
+%				       'Opciones':Opciones,
+				       'Valor':Valor
+%				       'Caption':Caption
 				   ]).
 
 
@@ -146,8 +146,10 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
         Code == 200
     ->
     Datos.resultado = json(Result),
-    Mensaje = Result.'Mensaje',
-    Doc = Result.'DocumentoURL',
+	  Respuestas = Result.'Respuestas',
+			      Respuestas = [json(First)|_],
+    Mensaje = First.'Mensaje',
+    Doc = First.'Contenido',
     format(string(Resultado),"~s ~n descargar en ~s ~n",[Mensaje,Doc])
     ;
     IntentosRest is Intentos -1,

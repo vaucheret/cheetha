@@ -49,7 +49,7 @@ def escuchar_resultados():
     print("🎧 Escuchando tópico 'tramitesResultados'...")
     for message in consumer:
         data = message.value
-        usuario = data.get("Usuario")
+        usuario = data.get("UsuarioChatBot")
         codigo = data.get("CodigoInterno")
         if usuario and codigo:
             resultados_tramite[(usuario, codigo)] = data

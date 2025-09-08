@@ -66,7 +66,7 @@
 * DONE Limpiar Dialogo
 * DONE que pasa cuando falla extraer_respuesta_por_tipo
 
+* DONE agregar deepseek 
 * TODO Preguntar dinamicamente listado de Variables a Preguntar
 
-* TODO agregar deepseek 
 * TODO MCP 

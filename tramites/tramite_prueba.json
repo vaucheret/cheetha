@@ -1,0 +1,17 @@
+{
+    "Tramite": "Tramite de Pruebas",
+    "CodigoInterno": "19",
+    "Identificacion": "aa aaaa",
+    "Variables":
+    [
+	{
+	    "Codigo": "12",
+            "Tipo": "numero",
+	    "Vector": "No",
+	    "PorDefecto": "",
+	    "Valor": "",
+	    "Pedir": "Si",
+	    "Caption": "Ingrese el CUIT del interesado"
+	}
+    ]
+}

@@ -29,8 +29,8 @@ for mensaje in consumer:
     print("📩 Trámite recibido:", json.dumps(datos, indent=2, ensure_ascii=False))
 
     # Extraer información
-    usuario = datos.get("Usuario", "desconocido")
-    tramite = datos.get("Tramite", "desconocido")
+    usuario = datos.get("UsuarioChatBot", "desconocido")
+#    tramite = datos.get("Tramite", "desconocido")
     codigo = datos.get("CodigoInterno", "sin_codigo")
     variables = datos.get("Variables", [])
 
@@ -43,10 +43,13 @@ for mensaje in consumer:
 
     # Crear resultado simulado
     resultado = {
-        "Usuario": usuario,
+        "UsuarioChatBot": usuario,
         "CodigoInterno": codigo,
-        "Mensaje": f"✅ Trámite '{tramite}' completado exitosamente para {nombre_completo}.",
-        "DocumentoURL": f"https://tramites.gob.ar/documentos/{codigo}.pdf"
+        "Excepcion": "",
+        "Respuestas": [{
+        "Mensaje": f"✅ Trámite  completado exitosamente para {nombre_completo}.",
+        "Contenido": f"https://tramites.gob.ar/documentos/{codigo}.pdf"
+        }]
     }
 
     # Enviar resultado al tópico de salida

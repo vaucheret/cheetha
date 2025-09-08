@@ -3,7 +3,7 @@
   "CodigoInterno": "LD-20250710",
   "Identificacion": "Martina Ríos - DNI 32123456",
   "Variables": [
-    {
+      {
       "Codigo": "LD01",
       "Tipo": "texto",
       "Vector": "No",
@@ -12,7 +12,7 @@
       "Pedir": "Si",
       "Caption": "Nombre completo del titular"
     },
-    {
+      {
       "Codigo": "LD02",
       "Tipo": "numero",
       "Vector": "No",
