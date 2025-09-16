@@ -1,0 +1,7 @@
+1. levantar el chatbot ( start_server(openai,8000). )
+2. levantar el kafka_bridge.py ( python3 kafka_bridge.py )
+3. levantar el sistema_motor.py (provisorio) (python3 sistema_motor.py)
+4. ir a configuracion de la api y generar token de accesso temporal
+5. ponerlo en flack_cloud y levantarlo
+6. llamar al ngrok http http://localhost:8080
+7. verificar el webhooks  con  direccionngrok/webhook y mitokendeverificacion1739

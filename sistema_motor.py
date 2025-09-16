@@ -3,9 +3,9 @@ from kafka import KafkaConsumer, KafkaProducer
 
 # Configuración Kafka
 
-#KAFKA_SERVER = 'localhost:9092'
+KAFKA_SERVER = 'localhost:9092'
  
-KAFKA_SERVER = '66.70.179.213:9092'
+#KAFKA_SERVER = '66.70.179.213:9092'
 
 # Consumidor para 'tramites'
 consumer = KafkaConsumer(
@@ -31,7 +31,7 @@ for mensaje in consumer:
     # Extraer información
     usuario = datos.get("UsuarioChatBot", "desconocido")
 #    tramite = datos.get("Tramite", "desconocido")
-    codigo = datos.get("CodigoInterno", "sin_codigo")
+    codigo = datos.get("CodigoTramite", 0)
     variables = datos.get("Variables", [])
 
     # Simular procesamiento (se puede reemplazar por lógica real)
@@ -44,11 +44,11 @@ for mensaje in consumer:
     # Crear resultado simulado
     resultado = {
         "UsuarioChatBot": usuario,
-        "CodigoInterno": codigo,
+        "CodigoTramite": codigo,
         "Excepcion": "",
-        "Respuestas": [{
+        "Variables": [{
         "Mensaje": f"✅ Trámite  completado exitosamente para {nombre_completo}.",
-        "Contenido": f"https://tramites.gob.ar/documentos/{codigo}.pdf"
+        "Contenido": f"https://www.renfe.com/content/dam/renfe/es/Viajeros/Secciones/Cercanias/Mapas/2024/plano-cercanias-2024.pdf"
         }]
     }
 

@@ -1,11 +1,11 @@
 {
-    "Tramite": "Tramite de Pruebas",
-    "CodigoInterno": "19",
+    "Tramite": "certificado fiscal",
+    "CodigoInterno": "3",
     "Identificacion": "aa aaaa",
     "Variables":
     [
 	{
-	    "Codigo": "12",
+	    "Codigo": "19",
             "Tipo": "numero",
 	    "Vector": "No",
 	    "PorDefecto": "",

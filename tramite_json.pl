@@ -115,11 +115,11 @@ crearDictJsonTramite(UserID,Tramite,Dict) :-
 %    atom_string(Tramite,TramiteS),
     codigo_interno(Tramite,CodigoInterno),
 %    identificacion_tramite(Tramite,IdentificacionTramite),
-    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoInterno':CodigoInterno,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
+    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoTramite':CodigoInterno,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
 
 completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
-		       retract(dato_tramite(UserID,Tramite, Id, Valor)),
-		       atom_string(Id,IdChars),
+    retract(dato_tramite(UserID,Tramite, Id, Valor)),
+		       atom_number(Id,IdChars),
 		       dict_create(P,_,[
 				       'CodigoVariable':IdChars,
 %				       'Tipo':Tipo,
@@ -146,16 +146,21 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
         Code == 200
     ->
     Datos.resultado = json(Result),
-	  Respuestas = Result.'Respuestas',
-			      Respuestas = [json(First)|_],
-    Mensaje = First.'Mensaje',
-    Doc = First.'Contenido',
-    format(string(Resultado),"~s ~n descargar en ~s ~n",[Mensaje,Doc])
+    Respuestas = Result.'Variables',
+    %% Respuestas = [json(First)|_],
+    %% Mensaje = First.'Mensaje',
+    %% Doc = First.'Contenido',
+	  %% format(string(Resultado),"~s ~n descargar de ~s ~n",[Mensaje,Doc])
+    maplist(mensajecontenido, Respuestas, Strings),
+    atomics_to_string(Strings,Resultado)
+%    format(string(Resultado),"~s",[All])
     ;
     IntentosRest is Intentos -1,
     esperar_respuesta_loop(URL, Resultado, IntentosRest,Intervalo)
     ).
 
+mensajecontenido(json(M),S) :-
+    format(string(S),"~w descargar de  ~w ~n",[M.'Mensaje',M.'Contenido']).    
 
 
 

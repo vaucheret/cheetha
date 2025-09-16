@@ -4,8 +4,8 @@ import threading
 import json
 
 app = Flask(__name__)
-#KAFKA_SERVER = 'localhost:9092'
-KAFKA_SERVER = '66.70.179.213:9092'
+KAFKA_SERVER = 'localhost:9092'
+#KAFKA_SERVER = '66.70.179.213:9092'
 
 
 # Enviar a Kafka
@@ -50,7 +50,7 @@ def escuchar_resultados():
     for message in consumer:
         data = message.value
         usuario = data.get("UsuarioChatBot")
-        codigo = data.get("CodigoInterno")
+        codigo = data.get("CodigoTramite")
         if usuario and codigo:
             resultados_tramite[(usuario, codigo)] = data
             print(f"[✔] Resultado recibido para {usuario}/{codigo} → {data}")

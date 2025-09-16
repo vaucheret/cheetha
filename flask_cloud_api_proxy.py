@@ -4,6 +4,7 @@ import os
 import requests
 import json
 import uuid
+import re
 from pathlib import Path
 from openai import OpenAI
 
@@ -12,7 +13,7 @@ app = Flask(__name__, static_url_path="/static", static_folder="static")
 # === Config ===
 PROLOG_URL = 'http://localhost:8000/chat'
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "mitokendeverificacion1739")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPe358mB4QrNqoA4nS17P1XTS6HUcyLQGRHiO5ciiSqXnEVEN1bKzTD0Y1ZCwaIEccCvFopnmja77c2Kw2V6qOjUjtYXOwUAAVinYOlsHqxh41ZBolt6C735lnXqFgH3fK0RmBELEJfkDD8aXNJyVnXGb1G7Q8DZAGNrwQ2UW38F4x2SJp8NyBl7tbSZBAkSKP0F9Kw2KcmN7UrRythxoXKrscJFAUZAH66tXjg65YDZB3P0md9WpwZD")
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPVtzUKbHdfHlJfg7F8YgWD312v6J4ICoikXgleo4XzQm5GMSG8e1c5fyPNUfvZBNsmiNJmlAy5bFmFLNFf05iHPaRBTiBTlrRlns0uqEZAyVXU3wqGPPtX1AQRgUln5EEpUHPOZBDaDqeVDtQNL1ILBTyCjArPJRsoX7oNifSgsjcNaAAs5tDk3edQh5z3itBsQyuHUc2r2TLb6xAXBTBU7d57eXr7JdQZDZD")
 PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "703793806159035")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -23,6 +24,55 @@ HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
 }
+
+
+# --- Enviar documento (PDF) ---
+def send_whatsapp_pdf(to, pdf_url, filename=None):
+    try:
+        if not filename:
+            filename = os.path.basename(pdf_url.split("?")[0]) or f"{uuid.uuid4().hex}.pdf"
+        local_filename = f"{uuid.uuid4().hex}_{filename}"
+        local_path = os.path.join("static", local_filename)
+
+        # Descargar PDF
+        r = requests.get(pdf_url, timeout=20)
+        if r.status_code != 200:
+            print("❌ Error al descargar PDF:", r.status_code, r.text)
+            return False
+        with open(local_path, "wb") as f:
+            f.write(r.content)
+
+        # URL pública
+        pdf_public_url = f"{request.host_url}static/{local_filename}"
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": normalize_whatsapp_number(to),
+            "type": "document",
+            "document": {
+                "link": pdf_public_url,
+                "filename": filename
+            }
+        }
+        res = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=15)
+        if res.status_code >= 300:
+            print("❌ Error enviando PDF:", res.status_code, res.text)
+            return False
+        else:
+            print(f"✅ PDF enviado: {pdf_public_url}")
+            return True
+    except Exception as e:
+        print("❌ Error en send_whatsapp_pdf:", e)
+        return False
+
+
+def extraer_link_pdf(text):
+    """Si hay un link a .pdf en el texto lo devuelve, si no None."""
+    if not text:
+        return None
+    m = re.search(r'(https?://\S+\.pdf)', text, re.IGNORECASE)
+    return m.group(1) if m else None
+
 
 # --- Normalización de números ---
 def normalize_whatsapp_number(to):
@@ -37,6 +87,14 @@ def normalize_whatsapp_number(to):
         if not to.startswith("+"):
             to = "+" + to
     return to
+
+
+def contiene_link(text):
+    """Detecta si el texto contiene un link http/https."""
+    if not text:
+        return False
+    return bool(re.search(r'https?://\S+', text))
+
 
 # --- Enviar texto ---
 def send_whatsapp_text(to, body):
@@ -186,7 +244,15 @@ def webhook():
             prolog_reply = "⚠️ Error al conectar con el motor de diálogo."
 
         # --- Responder ---
-        if reply_mode == "text":
+        pdf_link = extraer_link_pdf(prolog_reply)
+
+        if pdf_link:
+            # Mandar el PDF como documento y además el texto como apoyo
+            send_whatsapp_text(sender_wa, f"📄 Te envío el documento:\n{prolog_reply}")
+            send_whatsapp_pdf(sender_wa, pdf_link)
+        elif contiene_link(prolog_reply):
+            send_whatsapp_text(sender_wa, prolog_reply)
+        elif reply_mode == "text":
             send_whatsapp_text(sender_wa, prolog_reply)
         else:  # reply_mode == "audio"
           #  send_whatsapp_text(sender_wa, f"📖 Respuesta: {prolog_reply}")

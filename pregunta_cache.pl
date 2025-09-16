@@ -10,3 +10,6 @@ pregunta_cache(pasaporte, '22', 'Claro, aquí tienes una opción clara y amable:
 pregunta_cache(pasaporte, '23', 'Claro, puedes usar cualquiera de estas opciones:\n\n**Opción 1 (clara y directa):**\n¿Ya realizaste el pago del trámite? Responde \'sí\' o \'no\'.\n\n**Opción 2 (más amable):**\nPara continuar, necesito confirmar: ¿has realizado el pago correspondiente? (sí/no)\n\n**Opción 3 (muy sencilla):**\n¿Realizaste el pago? (sí/no)\n\nLas tres son claras y respetuosas. La opción 2 es especialmente amable al incluir "Para continuar", lo que le da contexto al usuario sobre por qué se solicita la información.').
 pregunta_cache(pasaporte, '24', 'Claro, aquí tienes una opción clara y amable:\n\n**¿Trae una foto carnet actualizada para el trámite?**').
 pregunta_cache('tramite de pruebas', '12', '¿Podría por favor proporcionar el CUIT del interesado para completar el trámite de pruebas?').
+pregunta_cache('trámite de prueba', '19', '¿Podría por favor proporcionarnos su CUIT para completar el trámite de prueba?').
+pregunta_cache('deudor alimentario', '19', 'Por favor, ¿podría proporcionarme su número de CUIT para continuar con el trámite de deudor alimentario?').
+pregunta_cache('certificado fiscal', '19', '¿Podría por favor proporcionar su CUIT para completar el trámite y emitir su certificado fiscal?').
