@@ -30,9 +30,11 @@ def enviar_a_kafka():
 def resultado_tramite():
     usuario = request.args.get('usuario')
     codigo = request.args.get('codigo')
-    clave = (usuario, codigo)
+    idtramite = request.args.get('id')   # cambio agregando codigo de instancia
+    clave = (usuario, codigo, idtramite) # cambio agregando codigo de instancia
     if clave in resultados_tramite:
-        return jsonify({"status": "ok", "resultado": resultados_tramite[clave]})
+        resultado = resultados_tramite.pop(clave)  
+        return jsonify({"status": "ok", "resultado": resultado})
     else:
         return jsonify({"status": "pending"}), 404
 
@@ -51,9 +53,10 @@ def escuchar_resultados():
         data = message.value
         usuario = data.get("UsuarioChatBot")
         codigo = data.get("CodigoTramite")
-        if usuario and codigo:
-            resultados_tramite[(usuario, codigo)] = data
-            print(f"[✔] Resultado recibido para {usuario}/{codigo} → {data}")
+        idtramite = data.get("TramiteID") # cambio agregando codigo de instancia
+        if usuario and codigo and idtramite: # cambio agregando codigo de instancia
+            resultados_tramite[(usuario, codigo, idtramite)] = data # cambio agregando codigo de instancia
+            print(f"[✔] Resultado recibido para {usuario}/{codigo}/{idtramite} → {data}") # cambio agregando codigo de instancia
 
 if __name__ == "__main__":
     threading.Thread(target=escuchar_resultados, daemon=True).start()

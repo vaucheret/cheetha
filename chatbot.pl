@@ -10,6 +10,7 @@
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
+:- use_module(library(uuid),[uuid/1]).
 
 :- dynamic current_provider/1.
 
@@ -74,10 +75,11 @@ handle_chat(Request) :-
     http_read_json_dict(Request, In),
     UserID = In.message.user_id,
     Text = In.message.text,
-    string_lower(Text,TextLower),					  
+    string_lower(Text,TextLower),
+%    format(user_output,"pregunta ~s~n",[TextLower]),	      		      
     dialogo(UserID,TextLower, Respuesta),
     format(string(RS), "~w", [Respuesta]),
-    format(user_output,"responde ~s~n",[RS]),	      
+%    format(user_output,"responde ~s~n",[RS]),	      
     set_stream(user_output, encoding(utf8)),
     reply_json_dict(_{ respuesta:RS }, [encoding(utf8)]).
 
@@ -98,17 +100,20 @@ chat_loop :-
 dialogo(UserID,Line, Respuesta) :-
     retract(historia(UserID,Hist0)),
     string_codes(Line,LineS),
+%    format(user_output,"retract historia ~w con ~w preg: ~s ~n",[UserID,Hist0,Line]),	      		      
     (
 	phrase((..., terminar, ...), LineS) ->
         Respuesta = "¡Hasta luego! Gracias por consultar",
         inicio(H0),
 	assertz(historia(UserID,H0))
+%	format(user_output,"aserta historia inicial ~w con ~w ~n",[UserID,H0])	      		      
     ;
     (
 	intencion(LineS, iniciar_tramite(T)),
 	flujo_tramite(T,[Paso|Pasos]) ->
         generar_pregunta_chatgpt(T,Paso,Respuesta),
         assertz(estado(UserID,[user-Line|Hist0],T,[Paso|Pasos]))
+%	format(user_output,"aserta estado para ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],T,[Paso|Pasos]])	      		      	
     ;
     (
 	append(Hist0,[user-Line], H1),
@@ -116,6 +121,7 @@ dialogo(UserID,Line, Respuesta) :-
 	atom_string(Respuesta,RespuestaS),
 	append(H1,[assistant-RespuestaS],H2),
 	assertz(historia(UserID,H2))
+%	format(user_output,"aserta historia  ~w con ~w  ~n",[UserID,H2])	      		      
     )
     )
     ).
@@ -124,11 +130,13 @@ dialogo(UserID,Line, Respuesta) :-
 dialogo(UserID,Line, Respuesta) :-
     retract(estado(UserID,Hist0, Tramite, [Paso|R])),
     string_codes(Line,LineS),
+%    format(user_output,"retract estado ~w con ~w , y ~w y ~w  ~n",[UserID,Hist0,Tramite,[Paso|R]]),
     (
 	phrase((..., terminar, ...), LineS) ->
         Respuesta = "Trámite cancelado.",
 	inicio(HN),
 	assertz(historia(UserID,HN))
+%	format(user_output,"aserta historia ~w con ~w  ~n",[UserID,HN])
     ;
     (
 	Paso = paso(Id,_,Tipo,_),
@@ -139,6 +147,7 @@ dialogo(UserID,Line, Respuesta) :-
 		R = [Next|_] ->
 		generar_pregunta_chatgpt(Tramite,Next,Respuesta),
 		assertz(estado(UserID,[user-Line|Hist0],Tramite,R))
+%	        format(user_output,"assert estado ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],Tramite,R])
 	    ;
 	    (
 		guardar_preguntas_cache,
@@ -149,24 +158,25 @@ dialogo(UserID,Line, Respuesta) :-
 			    %% findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
 			    %% atomic_list_concat(Ls, Body),
 			    %% format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
-			    %% exportar_datos_tramite(UserID,Tramite, Archivo),
+			    %% exportar_datos_tramite(UserID,Tramite,TramiteID,Archivo),
 
+                uuid(TramiteID),
+		exportar_datos_tramite_kafka(UserID,Tramite,TramiteID),
 
-		exportar_datos_tramite_kafka(UserID,Tramite),
-
-		esperar_respuesta_kafka(UserID,Tramite, MensajeKafka),
+		esperar_respuesta_kafka(UserID,Tramite,TramiteID, MensajeKafka),
 
  		format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
 		
 		inicio(HistN),
 		assertz(historia(UserID,HistN))
+%		format(user_output,"aserta historia despues de kafka ~w con ~w  ~n",[UserID,HistN])
 	    )
 	    )
 	;
 	% repreguntar
 	    generar_repregunta_chatgpt(Tramite,Paso,Respuesta),
 	    assertz(estado(UserID,[user-Line|Hist0],Tramite,[Paso|R]))
-	
+%            format(user_output,"aserta estado ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],Tramite,[Paso|R]])	   
 	)
 	)
     ).
@@ -174,6 +184,8 @@ dialogo(UserID,Line, Respuesta) :-
 dialogo(UserID,Line, Respuesta) :-
     historia(anonimo,Hist0),
     assertz(historia(UserID,Hist0)),
+%    format(user_output,"aserta historia last ~w con ~w  ~n",[UserID,Hist0]),
+%    format(user_output,"pregunta last ~s~n",[Line]),	      		      
     dialogo(UserID,Line, Respuesta).
 
 

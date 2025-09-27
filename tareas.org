@@ -66,7 +66,15 @@
 * DONE Limpiar Dialogo
 * DONE que pasa cuando falla extraer_respuesta_por_tipo
 
-* DONE agregar deepseek 
+* DONE agregar deepseek y gemini
+* DONE Ajustar flack para que envie pdf (pop y timeout)
+* DONE cambiar token temporal de larga vida
+* DONE agregar codigo de instancia
+   empezado, para probar con Raul
+* DONE cambiar nombre del pdf enviado
+* TODO interpretar numero deletreado
+* TODO reformular deteccion de tramite
+* TODO probar setup en otra computadora
 * TODO Preguntar dinamicamente listado de Variables a Preguntar
 
 * TODO MCP 

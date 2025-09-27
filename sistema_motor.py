@@ -30,8 +30,8 @@ for mensaje in consumer:
 
     # Extraer información
     usuario = datos.get("UsuarioChatBot", "desconocido")
-#    tramite = datos.get("Tramite", "desconocido")
-    codigo = datos.get("CodigoTramite", 0)
+    tramite = datos.get("TramiteID", "desconocido")
+    codigo = datos.get("CodigoTramite", "desconocido")
     variables = datos.get("Variables", [])
 
     # Simular procesamiento (se puede reemplazar por lógica real)
@@ -45,6 +45,7 @@ for mensaje in consumer:
     resultado = {
         "UsuarioChatBot": usuario,
         "CodigoTramite": codigo,
+        "TramiteID": tramite,
         "Excepcion": "",
         "Variables": [{
         "Mensaje": f"✅ Trámite  completado exitosamente para {nombre_completo}.",

@@ -6,9 +6,9 @@
 	      flujo_tramite/2,
 	      codigo_interno/2,
 	      identificacion_tramite/2,
-	      exportar_datos_tramite/3,
-	      exportar_datos_tramite_kafka/2,
-	      esperar_respuesta_kafka/3,
+	      exportar_datos_tramite/4,
+	      exportar_datos_tramite_kafka/3,
+	      esperar_respuesta_kafka/4,
 	      dato_tramite/4
 	  ]).
 
@@ -24,6 +24,7 @@ base de datos interna de los tramites, asi como los datos recolectados
 :- use_module(library(http/json)).
 :- use_module(library(apply), [maplist/3, include/3, maplist/2]).
 :- use_module(library(http/http_client), [http_post/4,http_get/3]).
+
 %:- use_module(library(readutil), [read_file_to_string/3]).
 
 :- dynamic codigo_interno/2.
@@ -91,15 +92,15 @@ variable_a_paso(PDict,paso(Codigo, PDict.'Caption',PDict.'Tipo',Opciones)) :-
 
 
 
-exportar_datos_tramite(UserID,Tramite,Archivo) :-
-    crearDictJsonTramite(UserID,Tramite,Dict),
+exportar_datos_tramite(UserID,Tramite,TramiteID,Archivo) :-
+    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict),
     open(Archivo, write, Stream, [encoding(utf8)]),
     json_write_dict(Stream, Dict),
     close(Stream).
 
 
-exportar_datos_tramite_kafka(UserID,Tramite) :-
-    crearDictJsonTramite(UserID,Tramite,Dict),
+exportar_datos_tramite_kafka(UserID,Tramite,TramiteID) :-
+    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict),
     setup_call_cleanup(
         http_post('http://localhost:8090/enviar_a_kafka',
                   json(_{ topic: "tramites", mensaje: Dict }),
@@ -109,13 +110,13 @@ exportar_datos_tramite_kafka(UserID,Tramite) :-
         true
     ).
 
-crearDictJsonTramite(UserID,Tramite,Dict) :-
+crearDictJsonTramite(UserID,Tramite,TramiteID,Dict) :-
     flujo_tramite(Tramite,Pasos),
     maplist(completar_variable(UserID,Tramite), Pasos, ListaVariables),
 %    atom_string(Tramite,TramiteS),
     codigo_interno(Tramite,CodigoInterno),
 %    identificacion_tramite(Tramite,IdentificacionTramite),
-    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoTramite':CodigoInterno,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
+    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
 
 completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
     retract(dato_tramite(UserID,Tramite, Id, Valor)),
@@ -130,10 +131,11 @@ completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
 
 
 
-esperar_respuesta_kafka(UserID, Tramite, Resultado) :-
+esperar_respuesta_kafka(UserID, Tramite,TramiteID, Resultado) :-
     codigo_interno(Tramite, Codigo),
-    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w', [UserID,Codigo]),
-    MaxIntentos = 10,
+    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w&id=~w', [UserID,Codigo,TramiteID]),
+%    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w', [UserID,Codigo]),
+    MaxIntentos = 20,
     IntervaloSeg = 2,
     esperar_respuesta_loop(URL, Resultado,MaxIntentos,IntervaloSeg).
 
@@ -146,6 +148,10 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
         Code == 200
     ->
     Datos.resultado = json(Result),
+	Excepcion = Result.'Excepcion',
+		(   Excepcion \= '' ->
+		    format(string(Resultado),"⚠ Ocurrió un error en el trámite: ~s",[Excepcion])
+		;     
     Respuestas = Result.'Variables',
     %% Respuestas = [json(First)|_],
     %% Mensaje = First.'Mensaje',
@@ -153,7 +159,8 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
 	  %% format(string(Resultado),"~s ~n descargar de ~s ~n",[Mensaje,Doc])
     maplist(mensajecontenido, Respuestas, Strings),
     atomics_to_string(Strings,Resultado)
-%    format(string(Resultado),"~s",[All])
+			%    format(string(Resultado),"~s",[All])
+		)
     ;
     IntentosRest is Intentos -1,
     esperar_respuesta_loop(URL, Resultado, IntentosRest,Intervalo)

@@ -1,0 +1,121 @@
+
+
+app secret 4f47a4a0d7fb79d5c370f50f5ad8eb91
+app id 1422951465628516
+
+
+Con respecto al token de Meta (WhatsApp Cloud API): lo que te pasa es lo normal cuando usás un token de acceso temporal (short-lived) que Meta te da en el dashboard → duran ~1 hora.
+
+Lo que yo te había comentado es que hay una forma de generar un long-lived token (60 días) y renovarlo automáticamente, así no tenés que andar copiando y pegando cada hora.
+
+🔑 Pasos para generar un token de larga duración
+
+Conseguir tu App ID y App Secret:
+Están en el Meta Developers Dashboard
+.
+
+Cambiar tu token corto por uno largo (60 días):
+Usá el endpoint de OAuth de Meta:
+
+curl -X GET "https://graph.facebook.com/v21.0/oauth/access_token \
+  ?grant_type=fb_exchange_token \
+  &client_id=APP_ID \
+  &client_secret=APP_SECRET \
+  &fb_exchange_token=SHORT_LIVED_TOKEN"
+
+
+👉 Esto devuelve un JSON con un access_token que dura 60 días.
+
+Guardar ese token en una variable de entorno en tu servidor:
+
+export META_ACCESS_TOKEN="EAAJ... largo ..."
+
+
+Y en tu flask_cloud_api_proxy.py lo leés con:
+
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+
+
+Renovar automáticamente antes de que caduque
+Antes de que pasen los 60 días, podés volver a hacer el fb_exchange_token para generar uno nuevo. Incluso podés escribir un pequeño script en cron que lo haga cada mes.
+
+🚀 Alternativa más pro
+
+En lugar de seguir generando tokens manualmente, podés implementar un flujo System User + Permanent Token (esto es más estable para producción). Eso requiere:
+
+Crear un "System User" en tu cuenta de empresa de Meta Business Manager.
+
+Generar un token de acceso asociado a ese usuario.
+
+Ese token puede ser "permanente" y solo se invalida si lo revocás manualmente.
+
+👉 Para tu caso (pruebas con Flask), lo más rápido es:
+
+Hacer el intercambio a 60 días con el fb_exchange_token.
+
+Guardar ese token en .env o en el sistema con export.
+
+Así no tenés que pegarlo cada hora.
+
+
+30718281594
+
+27229912653
+
+33683132859
+
+Trámite enviado a Kafka (tramites):
+{
+'CodigoTramite': 3,
+'UsuarioChatBot': 'toplevel',
+'Variables':
+ [
+   {
+    'CodigoVariable': 19,
+    'Valor': '33683132859'
+   }
+ ]
+}
+
+Resultado recibido para toplevel/3
+{
+'UsuarioChatBot': 'toplevel',
+'CodigoTramite': '3',
+'Excepcion': '',
+'Variables':
+ [
+   {
+     'Mensaje': 'Archivo PDF con certificados',
+     'Contenido': 'https://thinknetc3.ddns.net/chita/PDFs/f9d0dcc0-7ebf-4131-920a-e118ee136192.pdf'
+    }
+ ]
+ }
+
+Trámite enviado a Kafka (tramites):
+{
+'CodigoTramite': 3,
+'TramiteID': '4cdcb3c0-95c6-11f0-a0b6-bfe1ca50c375',
+'UsuarioChatBot': 'toplevel',
+'Variables':
+[
+  {
+   'CodigoVariable': 19,
+   'Valor': '33683132859'
+   }
+ ]
+ }
+
+Resultado recibido para toplevel/3
+{
+'UsuarioChatBot': 'toplevel',
+'TramiteID': '4cdcb3c0-95c6-11f0-a0b6-bfe1ca50c375',
+'CodigoTramite': '3',
+'Excepcion': '',
+'Variables':
+ [
+   {
+     'Mensaje': 'Archivo PDF con certificados',
+     'Contenido': 'https://thinknetc3.ddns.net/chita/PDFs/f9d0dcc0-7ebf-4131-920a-e118ee136192.pdf'
+    }
+ ]
+ }

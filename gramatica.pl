@@ -36,7 +36,10 @@ intencion(InputS, iniciar_tramite(T)) :-
 
 
 respuesta_iniciar_tramite(T) -->
-    ..., ("renovar";"sacar";"hacer";"obtener";"actualizar";"pedir"), ... , tramite(T), ... .
+     ...,  tramite(T), ... .
+
+%% respuesta_iniciar_tramite(T) -->
+%%     ..., ("quiero";"renovar";"sacar";"hacer";"obtener";"actualizar";"pedir"), ... , tramite(T), ... .
 
 
 tramite(T) --> { tramite_disponible(T), atom_codes(T, Cs) }, seq(Cs).
@@ -48,7 +51,31 @@ tramite(T) --> { tramite_disponible(T), atom_codes(T, Cs) }, seq(Cs).
 
 numero(N) --> ..., integer(N1),".",integer(N2),".",integer(N3), ... ,{N is N1 * 1000000 + N2 * 1000 + N3}.
 numero(N) --> ..., integer(N) , ... .
+numero(N) --> ..., lista_de_numero_en_letras(N),! , ... .
 numero(N) --> ..., numero_en_letras(N), !, ... .
+
+
+
+lista_de_numero_en_letras(N) -->
+    lista_de_unidades(Lista),
+    { convertir_lista_a_numero(Lista, N) }.
+
+
+% --- Reconocer una lista de unidades separadas ---
+lista_de_unidades([U|Us]) -->
+    unidad(U),
+    " ",
+    lista_de_unidades(Us).
+lista_de_unidades([U]) -->
+    unidad(U).
+
+% --- Convertir una lista de unidades en un número ---
+convertir_lista_a_numero(Lista, Numero) :-
+    foldl(combinar_digitos, Lista, 0, Numero).
+
+combinar_digitos(Digito, Acumulado, Resultado) :-
+    Resultado is Acumulado * 10 + Digito.
+
 
 % --- Define lo que es un "número en letras" ---
 numero_en_letras(N) --> miles_de_millones(N).

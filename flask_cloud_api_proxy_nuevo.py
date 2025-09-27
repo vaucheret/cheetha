@@ -1,7 +1,6 @@
 # flask_whatsapp_proxy.py
 from flask import Flask, request, jsonify
 import time
-from dotenv import load_dotenv
 import os
 import requests
 import json
@@ -12,14 +11,11 @@ from openai import OpenAI
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
 
-
-load_dotenv()
-
 # === Config ===
 PROLOG_URL = 'http://localhost:8000/chat'
-VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
+VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "mitokendeverificacion1739")
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPdnXb9ZAuQTNx01FoN2EnCZCPWVMViPg09HZBUeVHuvFmDZBvbxrKorreqfCq2U7pVSZCv2JCN90x4wqDiZAZCdAbLFNRh3tfMWRImECZCEViGdGTLhcIfmCB2B0RZAzPdpEUYXNXEQCfo6RunmDXo54J2sdO18v23DSZBcZAFHSBTH96Baa6qx")
+PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "703793806159035")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -31,6 +27,7 @@ HEADERS = {
 }
 
 
+# === Cache de duplicados ===
 processed_messages = {}  # dict con id → timestamp
 
 def is_duplicate(message_id, ttl=300):
@@ -40,17 +37,17 @@ def is_duplicate(message_id, ttl=300):
         if now - processed_messages[message_id] < ttl:
             return True
     processed_messages[message_id] = now
-    # limpieza de viejos
+    # limpieza
     for mid, ts in list(processed_messages.items()):
         if now - ts > ttl:
             processed_messages.pop(mid, None)
     return False
 
+
 # --- Enviar documento (PDF) ---
 def send_whatsapp_pdf(to, pdf_url, filename=None):
     try:
-
-        to_normalized = normalize_whatsapp_number(to).replace("+", "")
+        to_normalized = normalize_whatsapp_number(to)
         visible_filename = f"{to_normalized}.pdf"
         
         if not filename:
@@ -71,7 +68,7 @@ def send_whatsapp_pdf(to, pdf_url, filename=None):
 
         payload = {
             "messaging_product": "whatsapp",
-            "to": normalize_whatsapp_number(to),
+            "to": to_normalized,
             "type": "document",
             "document": {
                 "link": pdf_public_url,
@@ -91,7 +88,6 @@ def send_whatsapp_pdf(to, pdf_url, filename=None):
 
 
 def extraer_link_pdf(text):
-    """Si hay un link a .pdf en el texto lo devuelve, si no None."""
     if not text:
         return None
     m = re.search(r'(https?://\S+\.pdf)', text, re.IGNORECASE)
@@ -100,24 +96,20 @@ def extraer_link_pdf(text):
 
 # --- Normalización de números ---
 def normalize_whatsapp_number(to):
-    to = str(to).replace("+", "").replace(" ", "").replace("-", "")
+    to = str(to).replace(" ", "").replace("-", "")
+    if to.startswith("+"):
+        to = to[1:]
     if to.startswith("54"):
-        if to[2] == "9":
+        if len(to) > 2 and to[2] == "9":  # sacar el 9
             to = to[:2] + to[3:]
         area = to[2:5]
         local = to[5:]
         to = "54" + area + local
-    else:
-        if not to.startswith("+"):
-            to = "+" + to
     return to
 
 
 def contiene_link(text):
-    """Detecta si el texto contiene un link http/https."""
-    if not text:
-        return False
-    return bool(re.search(r'https?://\S+', text))
+    return bool(text and re.search(r'https?://\S+', text))
 
 
 # --- Enviar texto ---
@@ -131,7 +123,10 @@ def send_whatsapp_text(to, body):
     r = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
     if r.status_code >= 300:
         print("❌ Error al enviar mensaje a WhatsApp:", r.status_code, r.text)
+    else:
+        print(f"✅ Texto enviado a {to}: {body[:60]}...")
     return r.status_code < 300
+
 
 # --- Enviar audio (TTS en MP3 con streaming) ---
 def text_to_speech_and_send(to, text):
@@ -163,6 +158,7 @@ def text_to_speech_and_send(to, text):
     except Exception as e:
         print("❌ Error en TTS:", e)
 
+
 # --- Audio entrante ---
 def get_media_url(media_id):
     url = f"https://graph.facebook.com/v20.0/{media_id}"
@@ -176,7 +172,7 @@ def download_media(media_url):
     return res.content
 
 def transcribe_audio(audio_bytes):
-    """Guarda cada audio entrante con un nombre único y lo borra tras transcripción."""
+    """Transcribe audio y borra el archivo temporal."""
     temp_filename = f"{uuid.uuid4().hex}.ogg"
     temp_path = os.path.join("static", temp_filename)
     try:
@@ -195,8 +191,8 @@ def transcribe_audio(audio_bytes):
         except FileNotFoundError:
             pass
 
-# --- Webhook ---
 
+# --- Webhook ---
 @app.route("/webhook", methods=["GET"])
 def verify():
     mode = request.args.get("hub.mode")
@@ -238,24 +234,20 @@ def webhook():
 
         if msg_type == "text":
             text = msg["text"]["body"]
-            reply_mode = "text"
         elif msg_type == "button":
             text = msg["button"]["text"]
-            reply_mode = "text"
         elif msg_type == "interactive":
             inter = msg.get("interactive", {})
             if "button_reply" in inter:
                 text = inter["button_reply"]["title"]
             elif "list_reply" in inter:
                 text = inter["list_reply"]["title"]
-            reply_mode = "text"
         elif msg_type in ["audio", "voice"]:
             media_id = msg[msg_type]["id"]
             media_url = get_media_url(media_id)
             audio_bytes = download_media(media_url)
             text = transcribe_audio(audio_bytes)
             print(f"📝 Transcripción: {text}")
-            # send_whatsapp_text(sender_wa, f"📝 Transcripción: {text}")
             reply_mode = "audio"
 
         if not text:
@@ -277,23 +269,21 @@ def webhook():
         pdf_link = extraer_link_pdf(prolog_reply)
 
         if pdf_link:
-            # Mandar el PDF como documento y además el texto como apoyo
             send_whatsapp_pdf(sender_wa, pdf_link)
-            time.sleep(2)
             send_whatsapp_text(sender_wa, f"📄 Te envié el documento:\n{prolog_reply}")
         elif contiene_link(prolog_reply):
             send_whatsapp_text(sender_wa, prolog_reply)
-        elif reply_mode == "text":
-            send_whatsapp_text(sender_wa, prolog_reply)
-        else:  # reply_mode == "audio"
-          #  send_whatsapp_text(sender_wa, f"📖 Respuesta: {prolog_reply}")
+        elif reply_mode == "audio":
             text_to_speech_and_send(sender_wa, prolog_reply)
+        else:
+            send_whatsapp_text(sender_wa, prolog_reply)
 
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         print("❌ Error parseando evento:", e)
         return jsonify({"status": "error"}), 200
+
 
 if __name__ == "__main__":
     os.makedirs("static", exist_ok=True)

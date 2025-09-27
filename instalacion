@@ -78,6 +78,9 @@ ngrok http http://localhost:8080
 pip install requests openai
 pip3 install phonenumbers
 
+pip install python-dotenv
+
+
 -------------------------------- setup whatsapp -----------
 1. levantar el chatbot ( start_server(openai,8000). )
 2. levantar el kafka_bridge.py ( python3 kafka_bridge.py )
