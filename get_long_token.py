@@ -1,8 +1,11 @@
 import requests
+from dotenv import load_dotenv
 
-APP_ID = "1422951465628516"
-APP_SECRET = "4f47a4a0d7fb79d5c370f50f5ad8eb91"
-SHORT_TOKEN = "EAAUOKrSkM2QBPUyIm0LMuN78ixcmCql8xcdqAumCYgalcEP93BEBSTtBXrZB76jAeK3aP75X38sjkIVrckJYAtnbyRw7RplPm2LQgwqeGcZBpg0XYlj1DwEuwzb6bxW8XtuZAZA8UnjwzIBYSGooodZBQbrSvZCIUlLYx4M8fxfsaC9M2cZCxtoGwMJZADhixgMwJzkDs8QYn0HmV5fbKMvZBaKzkfC6RAKS0EuQNkM6CnKL1YgZDZD"
+load_dotenv()
+
+APP_ID = os.getenv("APP_ID")
+APP_SECRET = os.getenv("APP_SECRET")
+SHORT_TOKEN = os.getenv("SHORT_TOKEN")
 
 url = "https://graph.facebook.com/v20.0/oauth/access_token"
 

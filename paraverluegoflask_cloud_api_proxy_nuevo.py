@@ -1,6 +1,7 @@
 # flask_whatsapp_proxy.py
 from flask import Flask, request, jsonify
 import time
+from dotenv import load_dotenv
 import os
 import requests
 import json
@@ -11,11 +12,14 @@ from openai import OpenAI
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
 
+
+load_dotenv()
+
 # === Config ===
 PROLOG_URL = 'http://localhost:8000/chat'
-VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "mitokendeverificacion1739")
-ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "EAAUOKrSkM2QBPdnXb9ZAuQTNx01FoN2EnCZCPWVMViPg09HZBUeVHuvFmDZBvbxrKorreqfCq2U7pVSZCv2JCN90x4wqDiZAZCdAbLFNRh3tfMWRImECZCEViGdGTLhcIfmCB2B0RZAzPdpEUYXNXEQCfo6RunmDXo54J2sdO18v23DSZBcZAFHSBTH96Baa6qx")
-PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "703793806159035")
+VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN")
+ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
