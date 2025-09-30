@@ -1,0 +1,17 @@
+{
+    "Tramite": "libre deuda alimentario",
+    "CodigoInterno": 5,
+    "Identificacion": "aa aaaa",
+    "Variables":
+    [
+	{
+	    "Codigo": "26",
+            "Tipo": "numero",
+	    "Vector": "No",
+	    "PorDefecto": "",
+	    "Valor": "",
+	    "Pedir": "Si",
+	    "Caption": "Ingrese el CUIT del interesado"
+	}
+    ]
+}

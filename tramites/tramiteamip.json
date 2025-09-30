@@ -1,0 +1,17 @@
+{
+    "Tramite": "AMIP",
+    "CodigoInterno": 4,
+    "Identificacion": "aa aaaa",
+    "Variables":
+    [
+	{
+	    "Codigo": "25",
+            "Tipo": "numero",
+	    "Vector": "No",
+	    "PorDefecto": "",
+	    "Valor": "",
+	    "Pedir": "Si",
+	    "Caption": "Ingrese el CUIT del interesado"
+	}
+    ]
+}

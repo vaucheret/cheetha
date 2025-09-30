@@ -72,7 +72,7 @@
 * DONE agregar codigo de instancia
    empezado, para probar con Raul
 * DONE cambiar nombre del pdf enviado
-* TODO interpretar numero deletreado
+* DONE interpretar numero deletreado
 * TODO reformular deteccion de tramite
 * TODO probar setup en otra computadora
 * TODO Preguntar dinamicamente listado de Variables a Preguntar
