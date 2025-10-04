@@ -267,7 +267,7 @@ def webhook():
         # --- Pasar a Prolog ---
         prolog_payload = {"message": {"user_id": sender_wa, "text": text}}
         try:
-            res = requests.post(PROLOG_URL, json=prolog_payload, timeout=45)
+            res = requests.post(PROLOG_URL, json=prolog_payload, timeout=65)
             prolog_reply = res.json().get("respuesta", "⚠️ No se pudo obtener respuesta de Prolog")
         except Exception as e:
             print("❌ Error Prolog:", e)

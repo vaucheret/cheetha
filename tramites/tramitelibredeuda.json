@@ -1,11 +1,11 @@
 {
-    "Tramite": "libre deuda alimentario",
+    "Tramite": "alimentario",
     "CodigoInterno": 5,
     "Identificacion": "aa aaaa",
     "Variables":
     [
 	{
-	    "Codigo": "26",
+	    "Codigo": "28",
             "Tipo": "numero",
 	    "Vector": "No",
 	    "PorDefecto": "",

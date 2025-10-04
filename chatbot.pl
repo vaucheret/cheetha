@@ -76,10 +76,10 @@ handle_chat(Request) :-
     UserID = In.message.user_id,
     Text = In.message.text,
     string_lower(Text,TextLower),
-%    format(user_output,"pregunta ~s~n",[TextLower]),	      		      
+    format(user_output,"pregunta ~s~n",[TextLower]),	      		      
     dialogo(UserID,TextLower, Respuesta),
     format(string(RS), "~w", [Respuesta]),
-%    format(user_output,"responde ~s~n",[RS]),	      
+    format(user_output,"responde ~s~n",[RS]),	      
     set_stream(user_output, encoding(utf8)),
     reply_json_dict(_{ respuesta:RS }, [encoding(utf8)]).
 

@@ -135,7 +135,7 @@ esperar_respuesta_kafka(UserID, Tramite,TramiteID, Resultado) :-
     codigo_interno(Tramite, Codigo),
     format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w&id=~w', [UserID,Codigo,TramiteID]),
 %    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w', [UserID,Codigo]),
-    MaxIntentos = 20,
+    MaxIntentos = 30,
     IntervaloSeg = 2,
     esperar_respuesta_loop(URL, Resultado,MaxIntentos,IntervaloSeg).
 

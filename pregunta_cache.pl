@@ -14,3 +14,4 @@ pregunta_cache('trámite de prueba', '19', '¿Podría por favor proporcionarnos 
 pregunta_cache('deudor alimentario', '19', 'Por favor, ¿podría proporcionarme su número de CUIT para continuar con el trámite de deudor alimentario?').
 pregunta_cache('certificado fiscal', '19', '¿Podría por favor proporcionar su CUIT para completar el trámite y emitir su certificado fiscal?').
 pregunta_cache(amip, '25', '¿Podría por favor proporcionarnos su CUIT para completar el trámite de AMIP de manera correcta?').
+pregunta_cache(alimentario, '28', 'Por favor, ¿podría proporcionarme el CUIT del interesado para completar el trámite alimentario?').
