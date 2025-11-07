@@ -73,8 +73,320 @@
    empezado, para probar con Raul
 * DONE cambiar nombre del pdf enviado
 * DONE interpretar numero deletreado
-* TODO reformular deteccion de tramite
-* TODO probar setup en otra computadora
-* TODO Preguntar dinamicamente listado de Variables a Preguntar
+* DONE probar setup en otra computadora
+* DONE Preguntar dinamicamente listado de Variables a Preguntar
+
+* DONE reformular deteccion de tramite
+
+  hasta ahora la detección del interes en un tramite se hace por medio
+  de inspeccionar el texto del usuario y ver si contiene el nombre de
+  alguno de los tramites, por medio de dcg.  cuando eso pasa se llama
+  a flujo_tramite(T,P) y se pasa a un estado(usuario , ... , Pasos)
+  donde a partier de ahi se empiezan a recoletar los Parametros y
+  Variables para realizar el tramite.
+
+  Me gustaria utilizar a LLM para detectar cual tramite quiere hacer
+  el usuario, es decir llamar a la llM, con la consulta del usuario y
+  ademas preguntarle si detectó el tramite y cual es. O si no pudo
+  detectarlo y entonces que me diga que pregunta hacer al usuario para
+  seguir indagando cual es el tramite que quiere hacer.
+
+  si la llm encuentra cual es el tramite entonces devolver una
+  pregunta para confirmara el tramite y si el usurio da una respuesta
+  positiva entonces pasar al modo estado flujo tramite para recolectar
+  los datos del tramite.
+
+  te adjunto los archivos para que propongas las modificaciones para esto
+  son los tres archivos chatbot.pl tramite_json.pl y gramatica.pl
+** codigo
+*** detectar tramite
+detectar_tramite_llm(UserText, TramiteDetectado, Pregunta) :-
+    tramites_disponibles(L),
+    atomic_list_concat(L, ', ', ListaTramites),
+    format(string(Prompt),
+"El usuario escribió: «~s».
+Tu tarea es detectar si quiere hacer alguno de estos trámites: ~s.
+Devuelve un JSON con dos claves:
+- tramite_detectado: el nombre exacto del trámite si lo reconoces, o null si no.
+- pregunta: una pregunta breve para confirmar o seguir indagando.", 
+           [UserText, ListaTramites]),
+    call_llm_with_context([user-Prompt], RespuestaCruda),
+    (   catch(atom_json_dict(RespuestaCruda, Dict, []), _, fail)
+    ->  true
+    ;   catch(atom_json_dict(RespuestaCruda, Dict, [value_string_as(atom)]), _, fail)
+    ->  true
+    ;   % fallback: intentar extraer manualmente texto si no es JSON válido
+        Dict = _{tramite_detectado:null, pregunta:"¿Podrías aclarar qué trámite te interesa realizar?"})
+    ),
+    TramiteDetectado = Dict.get(tramite_detectado),
+    Pregunta = Dict.get(pregunta).
+*** codigo principal
+
+dialogo(UserID,Line, Respuesta) :-
+    retract(historia(UserID,Hist0)),
+    string_codes(Line,LineS),
+
+    (
+        phrase((..., terminar, ...), LineS) ->
+            Respuesta = "¡Hasta luego! Gracias por consultar",
+            inicio(H0),
+            assertz(historia(UserID,H0))
+    ;
+        % ——— NUEVO BLOQUE DE DETECCIÓN CON LLM ———
+        detectar_tramite_llm(Line, TramiteLlm, PregLlm),
+        (   nonvar(TramiteLlm),
+            TramiteLlm \== null,
+            tramite_disponible(TramiteLlm)
+        ->  % Si el LLM encontró un trámite existente
+            format(string(Respuesta), "~s", [PregLlm]),
+            assertz(estado(UserID,[user-Line|Hist0],confirmar_tramite(TramiteLlm),[]))
+        ;   % Si no detectó, seguir con DCG
+            (   intencion(LineS, iniciar_tramite(T)),
+                flujo_tramite(T,[Paso|Pasos]) ->
+                generar_pregunta_chatgpt(T,Paso,Respuesta),
+                assertz(estado(UserID,[user-Line|Hist0],T,[Paso|Pasos]))
+            ;
+                append(Hist0,[user-Line], H1),
+                call_llm_with_context(H1, Respuesta),
+                atom_string(Respuesta,RespuestaS),
+                append(H1,[assistant-RespuestaS],H2),
+                assertz(historia(UserID,H2))
+            )
+        )
+    ).
+*** confirmacion de tramite
+
+dialogo(UserID,Line, Respuesta) :-
+    retract(estado(UserID,Hist0,confirmar_tramite(T),_)),
+    string_codes(Line,LineS),
+    (   phrase((..., booleana("si"), ...), LineS)
+    ->  flujo_tramite(T,[Paso|Pasos]),
+        generar_pregunta_chatgpt(T,Paso,Respuesta),
+        assertz(estado(UserID,[user-Line|Hist0],T,[Paso|Pasos]))
+    ;   phrase((..., booleana("no"), ...), LineS)
+    ->  Respuesta = "De acuerdo. ¿Qué trámite querés hacer entonces?",
+        inicio(HN),
+        assertz(historia(UserID,HN))
+    ;   Respuesta = "Perdón, ¿podrías confirmar con 'sí' o 'no'?",
+        assertz(estado(UserID,Hist0,confirmar_tramite(T),[]))
+    ).
+*** nueva aproximacion
+
+   estado(User, Fase, Contexto)
+
+    donde Fase ∈ {buscar_tramite, ejecutar_tramite}
+y Contexto contiene lo que se haya acumulado (historial, trámite detectado, pasos, etc.).
+
+dialogo(User, Line, Respuesta) :-
+    (   estado(User, Fase, Contexto)
+    ->  true
+    ;   Fase = buscar_tramite,
+        Contexto = _{historia: [], intento: 0},
+        assertz(estado(User, Fase, Contexto))
+    ),
+    procesar_fase(User, Fase, Line, Contexto, Respuesta).
+**** procesar fase
+  
+procesar_fase(User, buscar_tramite, Line, Contexto, Respuesta) :-
+    % 1. Llamar al LLM para detectar o preguntar
+    detectar_tramite_llm(Line, TramiteDetectado, Pregunta),
+    (   nonvar(TramiteDetectado),
+        TramiteDetectado \== null,
+        tramite_disponible(TramiteDetectado)
+    ->  % Si encontró uno, pedir confirmación
+        format(string(Respuesta),
+               "~s ¿Querés hacer el trámite de «~w»?",
+               [Pregunta, TramiteDetectado]),
+        retractall(estado(User,_,_)),
+        assertz(estado(User, confirmar_tramite, _{tramite:TramiteDetectado, historia:[user-Line]}))
+    ;   % Si no lo detecta, seguir indagando
+        format(string(Respuesta), "~s", [Pregunta]),
+        append(Contexto.historia, [user-Line], Hist),
+        retractall(estado(User,_,_)),
+        assertz(estado(User, buscar_tramite, _{historia:Hist}))
+    ).
+**** fase de confirmación del tramite
+procesar_fase(User, confirmar_tramite, Line, Contexto, Respuesta) :-
+    string_lower(Line, Lower),
+    (   sub_string(Lower, _, _, _, "si")
+    ->  T = Contexto.tramite,
+        flujo_tramite(T, [Paso|Pasos]),
+        generar_pregunta_chatgpt(T, Paso, Pregunta),
+        format(string(Respuesta), "Perfecto, iniciemos el trámite «~w». ~s", [T, Pregunta]),
+        retractall(estado(User,_,_)),
+        assertz(estado(User, ejecutar_tramite, _{tramite:T, pasos:[Paso|Pasos], historia:[user-Line]}))
+    ;   sub_string(Lower, _, _, _, "no")
+    ->  Respuesta = "De acuerdo, contame qué trámite querés hacer.",
+        retractall(estado(User,_,_)),
+        assertz(estado(User, buscar_tramite, _{historia:[]}))
+    ;   Respuesta = "Perdón, ¿podés responder sí o no?"
+    ).
+**** ejecutar tramite
+
+procesar_fase(User, ejecutar_tramite, Line, Contexto, Respuesta) :-
+    Contexto = _{tramite:T, pasos:[Paso|Restantes]},
+    guardar_dato_tramite(User, T, Paso, Line),
+    (   Restantes = [Prox|RestoPasos]
+    ->  generar_pregunta_chatgpt(T, Prox, Respuesta),
+        retractall(estado(User,_,_)),
+        assertz(estado(User, ejecutar_tramite,
+                       _{tramite:T, pasos:[Prox|RestoPasos]}))
+    ;   exportar_datos_tramite_kafka(User, T, _TramiteID),
+        Respuesta = "Listo, envié la información para procesar tu trámite.",
+        retractall(estado(User,_,_)),
+        assertz(estado(User, buscar_tramite, _{historia:[]}))  % volver al inicio
+    ).
+*** logica auxiliar del llm
+Puedes usar exactamente la versión que te mostré antes,
+pero agregando memoria conversacional corta:
+
+
+detectar_tramite_llm(Utterance, Tramite, Pregunta) :-
+    tramites_disponibles(L),
+    atomic_list_concat(L, ', ', ListaTramites),
+    format(string(Prompt),
+"El usuario escribió: «~s».
+Debes identificar cuál de estos trámites quiere realizar (lista: ~s).
+Responde SOLO con JSON como este:
+{ \"tramite_detectado\": \"nombre_tramite\" o null, \"pregunta\": \"texto breve para confirmar o preguntar\" }.",
+           [Utterance, ListaTramites]),
+    call_llm_with_context([user-Prompt], R),
+    catch(atom_json_dict(R, D, []), _, D = _{tramite_detectado:null, pregunta:"¿Podrías aclarar qué trámite te interesa?"}),
+    Tramite = D.get(tramite_detectado),
+    Pregunta = D.get(pregunta).
+*** codigo completo
+
+% ——————————————————————————————————————
+% NUEVO DIALOGO con dos fases
+% ——————————————————————————————————————
+
+dialogo(UserID, Line, Respuesta) :-
+    string_codes(Line, LineS),
+    % Cancelar diálogo globalmente
+    (   phrase((..., terminar, ...), LineS)
+    ->  Respuesta = "Gracias por usar el asistente. ¡Hasta luego!",
+        inicio(H0),
+        retractall(historia(UserID,_)),
+        retractall(estado(UserID,_,_,_)),
+        assertz(historia(UserID,H0)), !
+    ;   true),
+
+    % Recuperar o inicializar estado
+    (   estado(UserID, Fase, Contexto, _)
+    ->  true
+    ;   Fase = buscar_tramite,
+        Contexto = _{historia: [], intento: 0},
+        assertz(estado(UserID, Fase, Contexto, []))
+    ),
+
+    procesar_fase(UserID, Fase, Line, Respuesta).
+
+% ——————————————————————————————————————
+% FASE 1: BUSCAR TRAMITE
+% ——————————————————————————————————————
+
+procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
+    retract(estado(UserID, _, Contexto, _)),
+    detectar_tramite_llm(Line, Tramite, Pregunta),
+    (   nonvar(Tramite),
+        Tramite \== null,
+        tramite_disponible(Tramite)
+    ->  format(string(Respuesta),
+               "~s ¿Querés hacer el trámite «~w»?", [Pregunta, Tramite]),
+        assertz(estado(UserID, confirmar_tramite,
+                       _{tramite: Tramite, historia:[user-Line]}, []))
+    ;   % No detectó trámite → seguir preguntando
+        format(string(Respuesta), "~s", [Pregunta]),
+        append(Contexto.historia, [user-Line], NuevaHist),
+        assertz(estado(UserID, buscar_tramite,
+                       _{historia:NuevaHist, intento: Contexto.intento+1}, []))
+    ).
+
+% ——————————————————————————————————————
+% FASE 2: CONFIRMAR TRAMITE
+% ——————————————————————————————————————
+
+procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
+    retract(estado(UserID, _, Contexto, _)),
+    string_lower(Line, Lower),
+    (   sub_string(Lower, _, _, _, "si")
+    ->  T = Contexto.tramite,
+        flujo_tramite(T, [Paso|Pasos]),
+        generar_pregunta_chatgpt(T, Paso, Pregunta),
+        format(string(Respuesta),
+               "Perfecto, iniciemos el trámite «~w». ~s", [T, Pregunta]),
+        assertz(estado(UserID, ejecutar_tramite,
+                       _{tramite:T, historia:[user-Line]}, [Paso|Pasos]))
+    ;   sub_string(Lower, _, _, _, "no")
+    ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
+        assertz(estado(UserID, buscar_tramite,
+                       _{historia:[], intento:0}, []))
+    ;   Respuesta = "Perdón, ¿podés responder sí o no?",
+        assertz(estado(UserID, confirmar_tramite, Contexto, []))
+    ).
+
+% ——————————————————————————————————————
+% FASE 3: EJECUTAR TRAMITE (flujo de pasos)
+% ——————————————————————————————————————
+
+procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
+    retract(estado(UserID, _, Contexto, [Paso|Restantes])),
+    T = Contexto.tramite,
+    string_codes(Line, LineS),
+    (   phrase((..., terminar, ...), LineS)
+    ->  Respuesta = "Trámite cancelado. Volvamos a empezar.",
+        inicio(HN),
+        assertz(historia(UserID,HN))
+    ;   Paso = paso(Id,_,Tipo,_),
+        (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
+        ->  assertz(dato_tramite(UserID,T,Id,Line1)),
+            (   Restantes = [Prox|RestoPasos]
+            ->  generar_pregunta_chatgpt(T,Prox,Respuesta),
+                assertz(estado(UserID, ejecutar_tramite,
+                               _{tramite:T}, [Prox|RestoPasos]))
+            ;   uuid(TramiteID),
+                exportar_datos_tramite_kafka(UserID,T,TramiteID),
+                esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka),
+                format(string(Respuesta),
+                       "~s\n\n¿En qué otro trámite te puedo ayudar?",
+                       [MensajeKafka]),
+                inicio(HistN),
+                assertz(historia(UserID,HistN))
+            )
+        ;   % Respuesta inválida → repreguntar
+            generar_repregunta_chatgpt(T,Paso,Respuesta),
+            assertz(estado(UserID, ejecutar_tramite,
+                           _{tramite:T}, [Paso|Restantes]))
+        )
+    ).
+
+% ——————————————————————————————————————
+% FALLBACK: Si no hay estado aún
+% ——————————————————————————————————————
+
+dialogo(UserID, Line, Respuesta) :-
+    historia(anonimo,H0),
+    assertz(historia(UserID,H0)),
+    dialogo(UserID, Line, Respuesta).
+
+% ——————————————————————————————————————
+% Detección flexible de trámite por LLM
+% ——————————————————————————————————————
+
+detectar_tramite_llm(Utterance, Tramite, Pregunta) :-
+    tramites_disponibles(L),
+    atomic_list_concat(L, ', ', ListaTramites),
+    format(string(Prompt),
+"El usuario escribió: «~s».
+Debes identificar cuál de estos trámites quiere realizar (lista: ~s).
+Responde SOLO en JSON, por ejemplo:
+{ \"tramite_detectado\": \"nombre_tramite\" o null,
+  \"pregunta\": \"texto breve para confirmar o preguntar\" }.",
+           [Utterance, ListaTramites]),
+    call_llm_with_context([user-Prompt], R),
+    catch(atom_json_dict(R, D, []),
+          _, D = _{tramite_detectado:null, pregunta:"¿Podrías aclarar qué trámite te interesa?"}),
+    Tramite = D.get(tramite_detectado),
+    Pregunta = D.get(pregunta).
 
 * TODO MCP 

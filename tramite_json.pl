@@ -2,6 +2,8 @@
 	      cargar_tramites/0,
 	      cargar_tramite_desde_json/1,
 	      cargar_tramites_from_one_Json/0,
+	      cargar_tramites_from_url/0,
+	      cargar_tramites_from_url2/0,
 	      tramite_disponible/1,
 	      flujo_tramite/2,
 	      codigo_interno/2,
@@ -9,7 +11,8 @@
 	      exportar_datos_tramite/4,
 	      exportar_datos_tramite_kafka/3,
 	      esperar_respuesta_kafka/4,
-	      dato_tramite/4
+	      dato_tramite/4,
+	      tramites_disponibles/1
 	  ]).
 
 
@@ -33,7 +36,7 @@ base de datos interna de los tramites, asi como los datos recolectados
 :- dynamic flujo_tramite/2.
 :- dynamic dato_tramite/4.
 
-
+tramites_disponibles(Tramites) :- findall(_{codigo:C,nombre:ST,descripcion:D}, (tramite_disponible(T),codigo_interno(T,C),identificacion_tramite(T,D),atom_string(T,ST)), L), atom_json_dict(Tramites, _{tramites:L},[as(string)]).
 
 %!  directorio_tramites(Directory) is det.
 %
@@ -49,6 +52,85 @@ jsonfiles(F) :-
     phrase(jsonfile,FC).
 
 
+%% ensure_dict(+Reply, -Dict)
+%% Acepta Reply en varios formatos y devuelve Dict (un dict Prolog).
+ensure_dict(Reply, Dict) :-
+    ( is_dict(Reply) ->
+        Dict = Reply
+    ; atomic(Reply) ->
+        % texto JSON: parsearlo a dict
+        atom_json_dict(Reply, Dict, [])
+    ; compound(Reply), functor(Reply, json, 1) ->
+        % término json(...) (representación Prolog de JSON) -> convertir recursivamente
+        json_term_to_dict(Reply, Dict)
+    ; % caso inesperado
+      throw(error(type_error(json_reply, Reply), _))
+    ).
+
+%% json_term_to_dict(+JsonTerm, -Dict)
+%% Convierte json(ListaAssoc) en dict. Maneja recursivamente listas y @(true)/@(false).
+json_term_to_dict(json(AssocList), Dict) :-
+    is_list(AssocList),
+    maplist(json_assoc_to_kv, AssocList, Pairs),
+    dict_create(Dict, _, Pairs).
+
+%% json_assoc_to_kv(+AssocElement, -Key-Value)
+%% AssocElement puede presentarse como Key=Val (lo habitual). Transformamos Val.
+json_assoc_to_kv(AssocElem, Key-ValueOut) :-
+    (	AssocElem = =(Key,Val) -> true  % Key=Val
+    ; AssocElem = Key:Val -> true    % Key:Val
+    ; AssocElem =.. [Key, Val] -> true  % por si aparece como Key(Val)
+    ),
+    % convertir clave a átomo si no lo es
+    ( atom(Key) -> KeyAtom = Key ; atom_string(KeyAtom, Key) ),
+    convert_json_value(Val, ValueOut),
+    Key = KeyAtom.   % devolvemos Key-ValueOut como par, dict_create usará KeyAtom
+
+%% convert_json_value(+Raw, -Converted)
+%% Normaliza valores: @(true)/@(false) -> booleanos, json(...) -> dict, listas -> maplist.
+convert_json_value(@(TrueFalse), Out) :- !,
+    % @(true) / @(false) vienen así en algunas representaciones
+    ( TrueFalse == true -> Out = true ; ( TrueFalse == false -> Out = false ; Out = TrueFalse ) ).
+convert_json_value(json(Assoc), Out) :- !,
+    json_term_to_dict(json(Assoc), Out).
+convert_json_value(List, Out) :-
+    is_list(List), !,
+    maplist(convert_json_value, List, Out).
+convert_json_value(Value, Value) :- !.  % número, atom, string, etc.
+
+
+
+cargar_tramites_from_url2 :-
+    URL = 'https://thinknetc3.ddns.net/chita/apigps/api/Tramite/ListarConParametros?Ticket=qwqw',
+		(
+				catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
+				Code == 200
+		->
+		%		atom_json_dict(Atom, Dict, []),
+		ensure_dict(Reply, Dict),
+		maplist(cargar_tramite_nuevo_desde_Json2,Dict.tramites)
+		%% findall(Nombre,tramite_disponible(Nombre),L),
+		%% format("~n Tramites: ~n~n"),
+		%% maplist([X]>>format('~a~n',[X]),L)
+		;   format("Error al descargar el archivo JSON desde la URL.~n")
+		
+		).
+    
+cargar_tramites_from_url :-
+    URL = 'https://thinknetc3.ddns.net/chita/apigps/api/Tramite/Listar?Ticket=qwqw',
+		(
+				catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
+				Code == 200
+		->
+		ensure_dict(Reply, Dict),
+		maplist(cargar_tramite_nuevo_desde_Json,Dict.tramites)
+		%% findall(Nombre,tramite_disponible(Nombre),L),
+		%% format("~n Tramites: ~n~n"),
+		%% maplist([X]>>format('~a~n',[X]),L)
+		;   format("Error al descargar el archivo JSON desde la URL.~n")
+		
+		).
+
 cargar_tramites_from_one_Json :-
     open('listado_de_tramites.json',read,Stream,[encoding(utf8)]),
     json_read_dict(Stream, Dict),
@@ -59,10 +141,33 @@ cargar_tramites_from_one_Json :-
     maplist([X]>>format('~a~n',[X]),L).
 
 
+cargar_tramite_nuevo_desde_Json2(Diction) :-
+                Dict = Diction.get('tramite'),
+		Variables = Diction.get('variablesEntrada',[]),   
+		string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
+		assertz(tramite_disponible(Nombre)),
+		assertz(codigo_interno(Nombre,Dict.'codigo')),
+		assertz(identificacion_tramite(Nombre,Dict.'descripcion')),
+		maplist(variable_a_paso2, Variables,Pasos),
+		assertz(flujo_tramite(Nombre,Pasos)).
+
+variable_a_paso2(PDict,paso(Codigo, PDict.'label',Tipo,Opciones)) :-
+    atom_string(Codigo,PDict.'codigo'),
+    (	PDict.'clase' == 1 -> Tipo = "numero"
+	      ;
+	      (	  PDict.'clase' == 3 -> Tipo = "fecha"
+			;
+			(   PDict.'clase' == 6 -> Tipo = "booleano"
+				  ;
+				  Tipo = "texto"))),
+    Opciones = PDict.get('Opciones',[]).
+
+
 cargar_tramite_nuevo_desde_Json(Dict) :-
     string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
-    assertz(tramite_disponible(Nombre)).
-
+    assertz(tramite_disponible(Nombre)),
+    assertz(codigo_interno(Nombre,Dict.'codigo')),
+    assertz(identificacion_tramite(Nombre,Dict.'descripcion')).
     
 
 cargar_tramites :-
@@ -103,7 +208,7 @@ exportar_datos_tramite_kafka(UserID,Tramite,TramiteID) :-
     crearDictJsonTramite(UserID,Tramite,TramiteID,Dict),
     setup_call_cleanup(
         http_post('http://localhost:8090/enviar_a_kafka',
-                  json(_{ topic: "tramites", mensaje: Dict }),
+                  json(_{ topic: "tramites2", mensaje: Dict }),
                   _,
                   [request_header('Content-Type'='application/json')]),
         true,
@@ -144,7 +249,6 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
     sleep(Intervalo),
     (
 	catch(http_get(URL, json(Datos), [request_header('Content-Type'='application/json'),status_code(Code)]), _, fail),
-
         Code == 200
     ->
     Datos.resultado = json(Result),

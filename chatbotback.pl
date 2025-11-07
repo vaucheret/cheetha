@@ -7,7 +7,6 @@
 :- use_module(library(lists)).
 :- use_module(tramite_json).
 :- use_module(gramatica).
-:- use_module(library(http/json)).
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
@@ -16,6 +15,7 @@
 :- dynamic current_provider/1.
 
 :- dynamic pregunta_cache/3.
+:- dynamic historia/2.
 :- dynamic estado/4.
 
 openai_api_key(Key) :-
@@ -42,25 +42,28 @@ set_provider(Provider) :-   % openai o deepseek
 
 start_server(Provider,Port) :-
     set_provider(Provider),
-%    cargar_tramites,
-    cargar_tramites_from_url2,
+    cargar_tramites,
     cargar_preguntas_cache,
+    inicio(H),
+    assertz(historia(anonimo,H)),
     http_server(http_dispatch, [port(Port), workers(4)]).
 
 
 iniciar_chat(Provider) :-
     set_provider(Provider),
-%    cargar_tramites,
+    %    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
+    inicio(H),
+    assertz(historia(_,H)),
     chat_loop.
 
-%% inicio([system-Prompt]) :-
-%%     tramites_disponibles(L),
-%%     atomic_list_concat(L, ", ", S),
-%%     format(string(Prompt),"Eres un asistente para trámites: ~s", [S]).
+inicio([system-Prompt]) :-
+    tramites_disponibles(L),
+    atomic_list_concat(L, ", ", S),
+    format(string(Prompt),"Eres un asistente para trámites: ~s", [S]).
 
-
+tramites_disponibles(L) :- findall(T, tramite_disponible(T), L).
 
 % ——————————————————————————————————————
 % LOOP
@@ -91,136 +94,100 @@ chat_loop :-
     chat_loop.
 
 
-
 % ——————————————————————————————————————
-% NUEVO DIALOGO con dos fases
-% ——————————————————————————————————————
-
-dialogo(UserID, Line, Respuesta) :-
-    estado(UserID, Fase, _, _),
-    string_codes(Line, LineS),
-    % Cancelar diálogo globalmente
-    (   phrase((..., terminar, ...), LineS)
-    ->  Respuesta = "Gracias por usar el asistente. ¡Hasta luego!",
-        retractall(estado(UserID,_,_,_))
-    ;  
-    
-    procesar_fase(UserID, Fase, Line, Respuesta)
-    ).
-
-
-% ——————————————————————————————————————
-% FALLBACK: Si no hay estado aún
+% DIALOGO
 % ——————————————————————————————————————
 
-dialogo(UserID, Line, Respuesta) :-
-    	% Recuperar o inicializar estado
-        Fase = buscar_tramite,
-        Contexto = _{historia: [system-"Eres un asistente para trámites"]},
-        assertz(estado(UserID, Fase, Contexto, [])),
-	dialogo(UserID, Line, Respuesta).
-
-
-% ——————————————————————————————————————
-% FASE 1: BUSCAR TRAMITE
-% ——————————————————————————————————————
-
-procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
-    retract(estado(UserID, _, Contexto, _)),
-    append(Contexto.historia, [user-Line], NuevaHist),
-    detectar_tramite_llm(Line,NuevaHist, Tramite, Pregunta),
-    append(NuevaHist, [assistant-Pregunta], HistConPregunta),
-    (   nonvar(Tramite),
-        Tramite \== null,
-	codigo_interno(TramiteA,Tramite),
-        tramite_disponible(TramiteA)
-    ->  format(string(Respuesta),
-               "~s ¿Querés hacer el trámite «~w»?", [Pregunta, TramiteA]),
-        assertz(estado(UserID, confirmar_tramite,
-                       _{tramite: Tramite, historia:HistConPregunta}, []))
-    ;   % No detectó trámite → seguir preguntando
-        format(string(Respuesta), "~s", [Pregunta]),
-        assertz(estado(UserID, buscar_tramite,
-                       _{historia:HistConPregunta}, []))
-    ).
-
-% ——————————————————————————————————————
-% FASE 2: CONFIRMAR TRAMITE
-% ——————————————————————————————————————
-
-procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
-    retract(estado(UserID, _, Contexto, _)),
-    string_lower(Line, Lower),
-    (	(   sub_string(Lower, _, _, _, "si");sub_string(Lower, _, _, _, "sí"))
-    ->
-        codigo_interno(T, Contexto.tramite),
-        flujo_tramite(T, [Paso|Pasos]),
-        generar_pregunta_chatgpt(T, Paso, Pregunta),
-        format(string(Respuesta),
-               "Perfecto, iniciemos el trámite «~w». ~s", [T, Pregunta]),
-        assertz(estado(UserID, ejecutar_tramite,
-                       Contexto, [Paso|Pasos]))
-    ;   sub_string(Lower, _, _, _, "no")
-	->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
-	    append(Contexto.historia, [user-Line], NuevaHistNo),
-	    append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
-        assertz(estado(UserID, buscar_tramite,
-                       _{historia:HistFinal}, []))
-    ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-        assertz(estado(UserID, confirmar_tramite, Contexto, []))
-    ).
-
-% ——————————————————————————————————————
-% FASE 3: EJECUTAR TRAMITE (flujo de pasos)
-% ——————————————————————————————————————
-
-procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
-    retract(estado(UserID, _, Contexto, [Paso|Restantes])),
+dialogo(UserID,Line, Respuesta) :-
+    retract(historia(UserID,Hist0)),
     string_codes(Line,LineS),
-    codigo_interno(T, Contexto.tramite),
-    Paso = paso(Id,_,Tipo,_),
-        (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
-        ->  assertz(dato_tramite(UserID,T,Id,Line1)),
-            (   Restantes = [Prox|_]
-            ->  generar_pregunta_chatgpt(T,Prox,Respuesta),
-                assertz(estado(UserID, ejecutar_tramite,
-                               Contexto, Restantes))
-            ;
-	        guardar_preguntas_cache,
-	        uuid(TramiteID),
-                exportar_datos_tramite_kafka(UserID,T,TramiteID),
-                esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka),
-                format(string(Respuesta),
-                       "~s\n\n¿En qué otro trámite te puedo ayudar?",
-                       [MensajeKafka])
-            )
-        ;   % Respuesta inválida → repreguntar
-            generar_repregunta_chatgpt(T,Paso,Respuesta),
-            assertz(estado(UserID, ejecutar_tramite,
-                           Contexto, [Paso|Restantes]))
-    
+%    format(user_output,"retract historia ~w con ~w preg: ~s ~n",[UserID,Hist0,Line]),	      		      
+    (
+	phrase((..., terminar, ...), LineS) ->
+        Respuesta = "¡Hasta luego! Gracias por consultar",
+        inicio(H0),
+	assertz(historia(UserID,H0))
+%	format(user_output,"aserta historia inicial ~w con ~w ~n",[UserID,H0])	      		      
+    ;
+    (
+	intencion(LineS, iniciar_tramite(T)),
+	flujo_tramite(T,[Paso|Pasos]) ->
+        generar_pregunta_chatgpt(T,Paso,Respuesta),
+        assertz(estado(UserID,[user-Line|Hist0],T,[Paso|Pasos]))
+%	format(user_output,"aserta estado para ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],T,[Paso|Pasos]])	      		      	
+    ;
+    (
+	append(Hist0,[user-Line], H1),
+	call_llm_with_context(H1, Respuesta),
+	atom_string(Respuesta,RespuestaS),
+	append(H1,[assistant-RespuestaS],H2),
+	assertz(historia(UserID,H2))
+%	format(user_output,"aserta historia  ~w con ~w  ~n",[UserID,H2])	      		      
+    )
+    )
     ).
 
 
-% ——————————————————————————————————————
-% Detección flexible de trámite por LLM
-% ——————————————————————————————————————
+dialogo(UserID,Line, Respuesta) :-
+    retract(estado(UserID,Hist0, Tramite, [Paso|R])),
+    string_codes(Line,LineS),
+%    format(user_output,"retract estado ~w con ~w , y ~w y ~w  ~n",[UserID,Hist0,Tramite,[Paso|R]]),
+    (
+	phrase((..., terminar, ...), LineS) ->
+        Respuesta = "Trámite cancelado.",
+	inicio(HN),
+	assertz(historia(UserID,HN))
+%	format(user_output,"aserta historia ~w con ~w  ~n",[UserID,HN])
+    ;
+    (
+	Paso = paso(Id,_,Tipo,_),
+	(   
+	    extraer_respuesta_por_tipo(Tipo,LineS,Line1) ->
+	    assertz(dato_tramite(UserID,Tramite,Id,Line1)),
+	    (
+		R = [Next|_] ->
+		generar_pregunta_chatgpt(Tramite,Next,Respuesta),
+		assertz(estado(UserID,[user-Line|Hist0],Tramite,R))
+%	        format(user_output,"assert estado ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],Tramite,R])
+	    ;
+	    (
+		guardar_preguntas_cache,
 
-detectar_tramite_llm(Utterance, Historia, Tramite, Pregunta) :-
-    tramites_disponibles(ListaTramites),
-    format(string(Prompt),
-"El usuario escribió: «~s».
-Debes identificar cuál de estos trámites quiere realizar (lista de tramites con codigo,nombre y descripcion: ~s).
-Responde SOLO en JSON, por ejemplo:
-{ \"tramite_detectado\": \"codigo\" o null,
-  \"pregunta\": \"texto breve para confirmar si el tramite fue detectado o si es null nueva pregunta para indagar al usuario cual es el tramite a realizar\" }.",
-[Utterance, ListaTramites]),
-    append(Historia, [user-Prompt], NewHistory),
-    call_llm_with_context(NewHistory, R),
-    catch(atom_json_dict(R, D, []),
-          _, D = _{tramite_detectado:null, pregunta:"¿Podrías aclarar qué trámite te interesa?"}),
-    Tramite = D.get(tramite_detectado),
-    Pregunta = D.get(pregunta).
+			    %% atom_concat('tramite_', Tramite, NombreBase),
+			    %% atom_concat(NombreBase, '.json', Archivo),
+			    %% format(string(Intro),"Hemos terminado el flujo para ~a.  Pronto verás los resultados o próximos pasos.\n Aquí los datos:\n",[Tramite]),
+			    %% findall(L, (dato_tramite(UserID,Tramite,I,V), format(string(L),"- ~a: ~s\n",[I,V])), Ls),
+			    %% atomic_list_concat(Ls, Body),
+			    %% format(string(Respuesta), "~s~a Datos del trámite guardados en: ~w\n En que otro tramite te puedo ayudar?", [Intro,Body,Archivo]),
+			    %% exportar_datos_tramite(UserID,Tramite,TramiteID,Archivo),
+
+                uuid(TramiteID),
+		exportar_datos_tramite_kafka(UserID,Tramite,TramiteID),
+
+		esperar_respuesta_kafka(UserID,Tramite,TramiteID, MensajeKafka),
+
+ 		format(string(Respuesta), "~s\n\n¿En qué otro trámite te puedo ayudar?", [MensajeKafka]),
+		
+		inicio(HistN),
+		assertz(historia(UserID,HistN))
+%		format(user_output,"aserta historia despues de kafka ~w con ~w  ~n",[UserID,HistN])
+	    )
+	    )
+	;
+	% repreguntar
+	    generar_repregunta_chatgpt(Tramite,Paso,Respuesta),
+	    assertz(estado(UserID,[user-Line|Hist0],Tramite,[Paso|R]))
+%            format(user_output,"aserta estado ~w con ~w , y ~w y ~w  ~n",[UserID,[user-Line|Hist0],Tramite,[Paso|R]])	   
+	)
+	)
+    ).
+
+dialogo(UserID,Line, Respuesta) :-
+    historia(anonimo,Hist0),
+    assertz(historia(UserID,Hist0)),
+%    format(user_output,"aserta historia last ~w con ~w  ~n",[UserID,Hist0]),
+%    format(user_output,"pregunta last ~s~n",[Line]),	      		      
+    dialogo(UserID,Line, Respuesta).
 
 
 
@@ -392,9 +359,10 @@ cargar_preguntas_cache :-
 
 guardar_estado_usuarios :-
     open('estado_usuarios.pl', write, S),
+    findall(historia(U, H), historia(U, H), Hs),
     findall(estado(U, H0, T, R), estado(U, H0, T, R), Es),
     findall(dato_tramite(U, T, I, V), dato_tramite(U, T, I, V), Ds),
-    append([Es, Ds], Todos),
+    append([Hs, Es, Ds], Todos),
     portray_clauses(Todos, S).
 
 cargar_estado_usuarios :-

@@ -15,3 +15,8 @@ pregunta_cache('deudor alimentario', '19', 'Por favor, ¿podría proporcionarme 
 pregunta_cache('certificado fiscal', '19', '¿Podría por favor proporcionar su CUIT para completar el trámite y emitir su certificado fiscal?').
 pregunta_cache(amip, '25', '¿Podría por favor proporcionarnos su CUIT para completar el trámite de AMIP de manera correcta?').
 pregunta_cache(alimentario, '28', 'Por favor, ¿podría proporcionarme el CUIT del interesado para completar el trámite alimentario?').
+pregunta_cache('emisión de certificado cuando no es deudor', '25', '¿Podría por favor proporcionarme su número de CUIT para poder emitirle el certificado correspondiente? Muchas gracias.').
+pregunta_cache('certificado de deudor alimentario', '28', '¿Podría por favor proporcionar su CUIT para completar el trámite del certificado de deudor alimentario?').
+pregunta_cache('certificado de libre deuda amip', '25', 'Por favor, ¿podría proporcionar su CUIT para poder tramitar su certificado de libre deuda amip?').
+pregunta_cache('certificado deudor moroso alimentario', '28', '¿Podría proporcionarme amablemente su CUIT para completar el trámite del certificado de deudor moroso alimentario?').
+pregunta_cache('libre deuda municipio de escobar', '19', 'Por favor, ¿podría proporcionarme el CUIT del usuario para poder completar el trámite de libre deuda en el municipio de Escobar? Gracias.').

@@ -7,3 +7,10 @@
 5. ponerlo en flack_cloud y levantarlo
 6. llamar al ngrok http http://localhost:8080
 7. verificar el webhooks  con  direccionngrok/webhook y mitokendeverificacion1739
+
+tramite_json 8090 -> 7090
+kafka_bridge 8090 -> 7090
+start_server(openai,7000)
+flask_cloud 8000 -> 7000
+flask_cloud 8080 -> 7080
+ngrok http http://localhost:7080

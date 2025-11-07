@@ -1,0 +1,54 @@
+{
+  "tramites": [
+    {
+      "codigo": 1,
+      "nombre": "Crear credencial verificable",
+      "descripcion": "Crear una credencial verificable a partir de datos ingresados por la pantalla.",
+      "entidadResponsable": "Municipalidad",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "[Mayor_Edad]",
+      "flujograma": true,
+      "habilitado": true,
+      "rutinoaValidez": -1,
+      "expresionValidez": "[Mayor_Edad]",
+      "listaPalabras": "aa qwqw",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 3,
+      "nombre": "Tramite nro 4",
+      "descripcion": "Tramite de pruebas",
+      "entidadResponsable": "Perico",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "listaPalabras": "aa aaaa",
+      "loginNecesario": 1
+    },
+    {
+      "codigo": 4,
+      "nombre": "Tramite nro 5",
+      "descripcion": "Tramite de pruebas",
+      "entidadResponsable": "Perico",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "listaPalabras": "qq qq",
+      "loginNecesario": 2
+    }
+  ],
+  "respuestaOK": true,
+  "msgErr": ""
+}
