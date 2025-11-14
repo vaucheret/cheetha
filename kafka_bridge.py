@@ -20,7 +20,7 @@ resultados_tramite = {}
 @app.route('/enviar_a_kafka', methods=['POST'])
 def enviar_a_kafka():
     data = request.json
-    topic = data.get("topic", "tramites2")
+    topic = data.get("topic", "tramites")
     mensaje = data.get("mensaje", {})
     print(f"[→] Trámite enviado a Kafka ({topic}): {mensaje}")
     producer.send(topic, mensaje)
@@ -40,7 +40,7 @@ def resultado_tramite():
 
 def escuchar_resultados():
     consumer = KafkaConsumer(
-        'tramitesResultados2',
+        'tramitesResultados',
         bootstrap_servers=KAFKA_SERVER,
         value_deserializer=lambda m: json.loads(m.decode('utf-8')),
         auto_offset_reset='latest',
@@ -48,7 +48,7 @@ def escuchar_resultados():
         enable_auto_commit=True
     )
 
-    print("🎧 Escuchando tópico 'tramitesResultados2'...")
+    print("🎧 Escuchando tópico 'tramitesResultados'...")
     for message in consumer:
         data = message.value
         usuario = data.get("UsuarioChatBot")

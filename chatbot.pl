@@ -45,6 +45,7 @@ start_server(Provider,Port) :-
 %    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
+    cargar_estado_usuarios,
     http_server(http_dispatch, [port(Port), workers(4)]).
 
 
@@ -53,6 +54,7 @@ iniciar_chat(Provider) :-
 %    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
+    cargar_estado_usuarios,
     chat_loop.
 
 %% inicio([system-Prompt]) :-
@@ -106,7 +108,8 @@ dialogo(UserID, Line, Respuesta) :-
     ;  
     
     procesar_fase(UserID, Fase, Line, Respuesta)
-    ).
+    ),
+    guardar_estado_usuarios.
 
 
 % ——————————————————————————————————————

@@ -208,7 +208,7 @@ exportar_datos_tramite_kafka(UserID,Tramite,TramiteID) :-
     crearDictJsonTramite(UserID,Tramite,TramiteID,Dict),
     setup_call_cleanup(
         http_post('http://localhost:8090/enviar_a_kafka',
-                  json(_{ topic: "tramites2", mensaje: Dict }),
+                  json(_{ topic: "tramites", mensaje: Dict }),
                   _,
                   [request_header('Content-Type'='application/json')]),
         true,
@@ -221,7 +221,7 @@ crearDictJsonTramite(UserID,Tramite,TramiteID,Dict) :-
 %    atom_string(Tramite,TramiteS),
     codigo_interno(Tramite,CodigoInterno),
 %    identificacion_tramite(Tramite,IdentificacionTramite),
-    dict_create(Dict,_,['UsuarioChatBot':UserID, /*'Tramite':TramiteS,*/ 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,/*'Identificacion':IdentificacionTramite,*/ 'Variables':ListaVariables]).
+    dict_create(Dict,_,['UsuarioChatBot':UserID, 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,'topico':"tramitesResultados", 'Variables':ListaVariables]).
 
 completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
     retract(dato_tramite(UserID,Tramite, Id, Valor)),
