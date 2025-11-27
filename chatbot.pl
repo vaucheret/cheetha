@@ -32,7 +32,9 @@ gemini_api_key(Key) :-
     			getenv('OPENROUTER_API_KEY', Key),
 			!.
 
-
+groq_api_key(Key) :-
+			getenv('GROQ_API_KEY', Key),
+			!.
 
 
 set_provider(Provider) :-   % openai o deepseek
@@ -245,6 +247,11 @@ call_llm_with_context(HistMsgs, Response) :-
     current_provider(gemini), !,
     gemini_call(HistMsgs, Response).
 
+call_llm_with_context(HistMsgs, Response) :-
+    current_provider(groq), !,
+    groq_call(HistMsgs, Response).
+
+
 
 openai_call(HistMsgs, Response) :-
     openai_api_key(Key),
@@ -285,6 +292,17 @@ gemini_call(HistMsgs, Response) :-
               ]),
     extract_gpt_response(ReplyDict, Response).
 
+groq_call(HistMsgs, Response) :-
+		groq_api_key(Key),
+		build_json_dict(HistMsgs,groq, JSONDICT),
+		http_post('https://api.groq.com/openai/v1/chat/completions',
+							json(JSONDICT),
+							ReplyDict,
+							[
+									authorization(bearer(Key)),
+									application/json
+							]),
+		extract_gpt_response(ReplyDict, Response).
 
 
 build_json_dict(Msgs,Provider, _{
@@ -298,7 +316,9 @@ build_json_dict(Msgs,Provider, _{
 %      Provider = deepseek -> Model = "deepseek-chat"
         Provider = deepseek -> Model = "deepseek/deepseek-chat-v3.1:free"
     ;	
-        Provider = gemini -> Model = "google/gemini-2.0-flash-exp:free"
+    Provider = gemini -> Model = "google/gemini-2.0-flash-exp:free"
+    ;
+    Provider = groq -> Model = "openai/gpt-oss-20b"
     ).
 
 to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
