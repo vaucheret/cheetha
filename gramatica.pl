@@ -64,7 +64,7 @@ lista_de_numero_en_letras(N) -->
 % --- Reconocer una lista de unidades separadas ---
 lista_de_unidades([U|Us]) -->
     unidad(U),
-    " ",
+    (" "|", "|","),
     lista_de_unidades(Us).
 lista_de_unidades([U]) -->
     unidad(U).

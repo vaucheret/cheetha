@@ -18,23 +18,12 @@
 :- dynamic pregunta_cache/3.
 :- dynamic estado/4.
 
-openai_api_key(Key) :-
-      getenv('OPENAI_API_KEY', Key),
-      !.
-
-deepseek_api_key(Key) :-
-    %			getenv('DEEPSEEK_API_KEY', Key),
-    			getenv('OPENROUTER_API_KEY', Key),
-			!.
-
-gemini_api_key(Key) :-
-    %			getenv('GEMINI_API_KEY', Key),
-    			getenv('OPENROUTER_API_KEY', Key),
-			!.
-
-groq_api_key(Key) :-
-			getenv('GROQ_API_KEY', Key),
-			!.
+% Configuración de proveedores LLM
+% provider_data(ProviderName, ModelName, EnvVarForKey, ApiUrl).
+provider_data(openai, "gpt-3.5-turbo",'OPENAI_API_KEY','https://api.openai.com/v1/chat/completions').
+provider_data(deepseek, "deepseek/deepseek-chat-v3.1:free",'OPENROUTER_API_KEY','https://openrouter.ai/api/v1/chat/completions').
+provider_data(gemini, "google/gemini-2.0-flash-exp:free",'OPENROUTER_API_KEY','https://openrouter.ai/api/v1/chat/completetions').
+provider_data(groq, "openai/gpt-oss-20b",'GROQ_API_KEY','https://api.groq.com/openai/v1/chat/completions').
 
 
 set_provider(Provider) :-   % openai o deepseek
@@ -140,7 +129,8 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	codigo_interno(TramiteA,Tramite),
         tramite_disponible(TramiteA)
     ->  format(string(Respuesta),
-               "~s ¿Querés hacer el trámite «~w»?", [Pregunta, TramiteA]),
+	       %               "~s ¿Querés hacer el trámite «~w»?", [Pregunta, TramiteA]),
+                    "~s", [Pregunta]),
         assertz(estado(UserID, confirmar_tramite,
                        _{tramite: Tramite, historia:HistConPregunta}, []))
     ;   % No detectó trámite → seguir preguntando
@@ -234,92 +224,27 @@ Responde SOLO en JSON, por ejemplo:
 % ChatGPT API integration
 % ——————————————————————————————————————
 
-call_llm_with_context(HistMsgs, Response) :-
-    current_provider(openai), !,
-    openai_call(HistMsgs, Response).
 
 call_llm_with_context(HistMsgs, Response) :-
-    current_provider(deepseek), !,
-    deepseek_call(HistMsgs, Response).
-
-
-call_llm_with_context(HistMsgs, Response) :-
-    current_provider(gemini), !,
-    gemini_call(HistMsgs, Response).
-
-call_llm_with_context(HistMsgs, Response) :-
-    current_provider(groq), !,
-    groq_call(HistMsgs, Response).
-
-
-
-openai_call(HistMsgs, Response) :-
-    openai_api_key(Key),
-    build_json_dict(HistMsgs, openai, JSONDICT),
-    http_post('https://api.openai.com/v1/chat/completions',
-              json(JSONDICT),
-              ReplyDict,
-              [
-                  authorization(bearer(Key)),
-                  application/json
-              ]),
+    current_provider(Provider),
+    provider_data(Provider,Model,EnvVarForKey,ApiUrl),
+    getenv(EnvVarForKey, Key),
+    build_json_dict(HistMsgs,Model,JSONDICT),
+    http_post(ApiUrl,
+	      json(JSONDICT),
+	      ReplyDict,
+	      [
+		  authorization(bearer(Key)),
+		  application/json
+	      ]),
     extract_gpt_response(ReplyDict, Response).
 
-
-deepseek_call(HistMsgs, Response) :-
-    deepseek_api_key(Key),
-    build_json_dict(HistMsgs,deepseek, JSONDICT),
-%    http_post('https://api.deepseek.com/chat/completions',
-    http_post('https://openrouter.ai/api/v1/chat/completions',	      
-              json(JSONDICT),
-              ReplyDict,
-              [
-                  authorization(bearer(Key)),
-                  application/json
-              ]),
-    extract_gpt_response(ReplyDict, Response).
-
-gemini_call(HistMsgs, Response) :-
-    gemini_api_key(Key),
-    build_json_dict(HistMsgs,gemini, JSONDICT),
-%    http_post('https://api.deepseek.com/chat/completions',
-    http_post('https://openrouter.ai/api/v1/chat/completions',	      
-              json(JSONDICT),
-              ReplyDict,
-              [
-                  authorization(bearer(Key)),
-                  application/json
-              ]),
-    extract_gpt_response(ReplyDict, Response).
-
-groq_call(HistMsgs, Response) :-
-		groq_api_key(Key),
-		build_json_dict(HistMsgs,groq, JSONDICT),
-		http_post('https://api.groq.com/openai/v1/chat/completions',
-							json(JSONDICT),
-							ReplyDict,
-							[
-									authorization(bearer(Key)),
-									application/json
-							]),
-		extract_gpt_response(ReplyDict, Response).
-
-
-build_json_dict(Msgs,Provider, _{
-    model: Model, 
-    messages: MessagesList
+build_json_dict(Msgs,Model, _{
+		model: Model, 
+		messages: MessagesList
 }) :-
-    maplist(to_message_obj, Msgs, MessagesList), 
-    (
-	Provider = openai -> Model = "gpt-3.5-turbo"
-    ;
-%      Provider = deepseek -> Model = "deepseek-chat"
-        Provider = deepseek -> Model = "deepseek/deepseek-chat-v3.1:free"
-    ;	
-    Provider = gemini -> Model = "google/gemini-2.0-flash-exp:free"
-    ;
-    Provider = groq -> Model = "openai/gpt-oss-20b"
-    ).
+    maplist(to_message_obj, Msgs, MessagesList).
+
 
 to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
     atom_string(Role, SRole).
