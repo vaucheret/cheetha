@@ -1,7 +1,8 @@
 {
   "Tramite": "Constancia de escolaridad", 
   "CodigoInterno": "122122222", 
-  "Identificacion": "Juan Perez - Los Andes 25", 
+    "Identificacion": "Juan Perez - Los Andes 25",
+    "asincronico":false,
   "Variables":  
      [
       {

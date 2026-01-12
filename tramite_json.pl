@@ -4,14 +4,15 @@
 	      cargar_tramites_from_one_Json/0,
 	      cargar_tramites_from_url/0,
 	      cargar_tramites_from_url2/0,
+	      cargar_variables_tramite_en_espera/2,
 	      tramite_disponible/1,
 	      flujo_tramite/2,
-	      codigo_interno/2,
-	      identificacion_tramite/2,
+	      informacion_tramite/4,
 	      exportar_datos_tramite/4,
-	      exportar_datos_tramite_kafka/3,
+	      exportar_datos_tramite_kafka/5,
 	      esperar_respuesta_kafka/4,
 	      dato_tramite/4,
+	      tramite_en_espera/4,
 	      tramites_disponibles/1
 	  ]).
 
@@ -30,13 +31,20 @@ base de datos interna de los tramites, asi como los datos recolectados
 
 %:- use_module(library(readutil), [read_file_to_string/3]).
 
-:- dynamic codigo_interno/2.
-:- dynamic identificacion_tramite/2.
+
+     
+%:- dynamic codigo_interno/2.
+%:- dynamic identificacion_tramite/2.
 :- dynamic tramite_disponible/1.
+% informacion_tramite(Nombre,CodigoInterno,Asincronico,Descripcion)
+:- dynamic informacion_tramite/4.
+% tramite_en_espera(UserID,Tramite,TramiteID,Contexto).
+:- dynamic tramite_en_espera/4.
+     
 :- dynamic flujo_tramite/2.
 :- dynamic dato_tramite/4.
 
-tramites_disponibles(Tramites) :- findall(_{codigo:C,nombre:ST,descripcion:D}, (tramite_disponible(T),codigo_interno(T,C),identificacion_tramite(T,D),atom_string(T,ST)), L), atom_json_dict(Tramites, _{tramites:L},[as(string)]).
+tramites_disponibles(Tramites) :- findall(_{codigo:C,nombre:ST,descripcion:D}, (tramite_disponible(T),informacion_tramite(T,C,_,D),atom_string(T,ST)), L), atom_json_dict(Tramites, _{tramites:L},[as(string)]).
 
 %!  directorio_tramites(Directory) is det.
 %
@@ -146,8 +154,7 @@ cargar_tramite_nuevo_desde_Json2(Diction) :-
 		Variables = Diction.get('variablesEntrada',[]),   
 		string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
 		assertz(tramite_disponible(Nombre)),
-		assertz(codigo_interno(Nombre,Dict.'codigo')),
-		assertz(identificacion_tramite(Nombre,Dict.'descripcion')),
+		assertz(informacion_tramite(Nombre,Dict.'codigo',Dict.'asincronico',Dict.'descripcion')),
 		maplist(variable_a_paso2, Variables,Pasos),
 		assertz(flujo_tramite(Nombre,Pasos)).
 
@@ -162,12 +169,28 @@ variable_a_paso2(PDict,paso(Codigo, PDict.'label',Tipo,Opciones)) :-
 				  Tipo = "texto"))),
     Opciones = PDict.get('Opciones',[]).
 
+variable_a_paso3(PDict,paso(Codigo, PDict.'Label',Tipo,Opciones)) :-
+    atom_string(Codigo,PDict.'Codigo'),
+    (	PDict.'Clase' == 1 -> Tipo = "numero"
+	      ;
+	      (	  PDict.'Clase' == 3 -> Tipo = "fecha"
+			;
+			(   PDict.'Clase' == 6 -> Tipo = "booleano"
+				  ;
+				  Tipo = "texto"))),
+    Opciones = PDict.get('Opciones',[]).
+
+
+cargar_variables_tramite_en_espera(Variables,Pasos) :-
+		maplist(variable_a_paso3, Variables,Pasos).
+
 
 cargar_tramite_nuevo_desde_Json(Dict) :-
     string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
     assertz(tramite_disponible(Nombre)),
-    assertz(codigo_interno(Nombre,Dict.'codigo')),
-    assertz(identificacion_tramite(Nombre,Dict.'descripcion')).
+    assertz(informacion_tramite(Nombre,Dict.'codigo',Dict.'asincronico',Dict.'descripcion')).
+
+
     
 
 cargar_tramites :-
@@ -185,8 +208,7 @@ cargar_tramite_desde_json(A) :-
     close(Stream),
     string_lower(Dict.'Tramite',NString),atom_string(Nombre,NString),
     assertz(tramite_disponible(Nombre)),
-    assertz(codigo_interno(Nombre,Dict.'CodigoInterno')),
-    assertz(identificacion_tramite(Nombre,Dict.'Identificacion')),
+    assertz(informacion_tramite(Nombre,Dict.'CodigoInterno',Dict.'asincronico',Dict.'Identificacion')),
     maplist(variable_a_paso, Dict.'Variables',Pasos),
     assertz(flujo_tramite(Nombre,Pasos)).
 
@@ -204,24 +226,24 @@ exportar_datos_tramite(UserID,Tramite,TramiteID,Archivo) :-
     close(Stream).
 
 
-exportar_datos_tramite_kafka(UserID,Tramite,TramiteID) :-
-    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict),
+exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Topico,TopicoRes) :-
+    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes),
     setup_call_cleanup(
         http_post('http://localhost:8090/enviar_a_kafka',
-                  json(_{ topic: "tramites", mensaje: Dict }),
+                  json(_{ topic: Topico, mensaje: Dict }),
                   _,
                   [request_header('Content-Type'='application/json')]),
         true,
         true
     ).
 
-crearDictJsonTramite(UserID,Tramite,TramiteID,Dict) :-
+crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes) :-
     flujo_tramite(Tramite,Pasos),
     maplist(completar_variable(UserID,Tramite), Pasos, ListaVariables),
-%    atom_string(Tramite,TramiteS),
-    codigo_interno(Tramite,CodigoInterno),
+    %    atom_string(Tramite,TramiteS),
+    informacion_tramite(Tramite,CodigoInterno,_,_),
 %    identificacion_tramite(Tramite,IdentificacionTramite),
-    dict_create(Dict,_,['UsuarioChatBot':UserID, 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,'topico':"tramitesResultados", 'Variables':ListaVariables]).
+    dict_create(Dict,_,['UsuarioChatBot':UserID, 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,'URLKafka':"66.70.179.213:9092",'TopicoKafka':TopicoRes, 'UsuarioKafka':"",'ClaveKafka':"",'Variables':ListaVariables]).
 
 completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
     retract(dato_tramite(UserID,Tramite, Id, Valor)),
@@ -237,7 +259,7 @@ completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
 
 
 esperar_respuesta_kafka(UserID, Tramite,TramiteID, Resultado) :-
-    codigo_interno(Tramite, Codigo),
+    informacion_tramite(Tramite,Codigo,_,_),
     format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w&id=~w', [UserID,Codigo,TramiteID]),
 %    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w', [UserID,Codigo]),
     MaxIntentos = 30,

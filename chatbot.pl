@@ -16,6 +16,8 @@
 :- dynamic current_provider/1.
 
 :- dynamic pregunta_cache/3.
+
+% estado(UserID, Fase, Contexto, PasosRestantes).
 :- dynamic estado/4.
 
 % Configuración de proveedores LLM
@@ -61,6 +63,57 @@ iniciar_chat(Provider) :-
 
 
 :- http_handler(root(chat), handle_chat, [method(post)]).
+:- http_handler(root(notificacion_tramite), handle_notificacion, [method(post)]).
+
+handle_notificacion(Request) :-
+    http_read_json_dict(Request, In),
+    format(user_output,"entro notificacion ~n",[]),	      		      
+		UserID = In.user_id,
+		TramiteID = In.tramite_id,
+			       Mensaje = In.resultado,
+					    format(user_output,"con este mensaje ~w~n",[Mensaje]),
+    (
+       atom_string(TramiteIDA,TramiteID),
+	retract(tramite_en_espera(UserID, Tramite, TramiteIDA,Contexto))
+		->
+		(    Mensaje.'Accion' == 1
+			     -> 
+				 cargar_variables_tramite_en_espera(Mensaje.'VariablesPedidas',[Paso|Pasos]),
+				 assertz(estado(UserID, ejecutar_tramite,Contexto.put(topic,Mensaje.'TopicoKafka'), [Paso|Pasos])),
+				 generar_pregunta_chatgpt(Tramite, Paso, Pregunta),
+				 format(string(Texto),
+					"Hola, para continuar con el tramite «~w», necesitamos mas información. ~s", [Tramite, Pregunta])
+
+			     ;
+			     (	 Mensaje.'Accion' == 2
+					 ->
+				 format(string(Texto),
+					"Hola, para completar el tramite «~w», necesitamos que te dirijas al siguiente link  ~s", [Tramite, Mensaje.'Link'])
+					 ;
+					 (    Mensaje.'Accion' == 4
+						      ->
+				 format(string(Texto),
+					"Hola, el tramite «~w», ha sido completado", [Tramite])
+					 ))),
+		enviar_mensaje_usuario(UserID, Texto),
+		reply_json_dict(_{ status: "ok" }, [encoding(utf8)])
+									  
+		;   reply_json_dict(_{ status: "error", message: "Trámite no encontrado" }, [encoding(utf8)])
+		).
+
+enviar_mensaje_usuario(UserID, Texto) :-
+    PrologURL = 'http://localhost:8080/enviar_mensaje',
+    http_post(
+        PrologURL,
+        json(_{
+            user_id: UserID,
+            texto: Texto
+        }),
+        _Respuesta,
+        [request_header('Content-Type'='application/json')]
+    ).
+
+
 
 handle_chat(Request) :-
     http_read_json_dict(Request, In),
@@ -115,6 +168,12 @@ dialogo(UserID, Line, Respuesta) :-
 	dialogo(UserID, Line, Respuesta).
 
 
+% TODO: manejar "salir" o "cancelar" en cualquier fase
+% TODO: realizar phase de identificación de usuario antes de iniciar trámite
+% TODO: manejar multiples tramites en paralelo por usuario
+% TODO: poder pausear y reanudar trámites mientras el usuario busca datos 
+
+
 % ——————————————————————————————————————
 % FASE 1: BUSCAR TRAMITE
 % ——————————————————————————————————————
@@ -126,7 +185,7 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
     append(NuevaHist, [assistant-Pregunta], HistConPregunta),
     (   nonvar(Tramite),
         Tramite \== null,
-	codigo_interno(TramiteA,Tramite),
+	informacion_tramite(TramiteA,Tramite,_,_),
         tramite_disponible(TramiteA)
     ->  format(string(Respuesta),
 	       %               "~s ¿Querés hacer el trámite «~w»?", [Pregunta, TramiteA]),
@@ -148,13 +207,18 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
     string_lower(Line, Lower),
     (	(   sub_string(Lower, _, _, _, "si");sub_string(Lower, _, _, _, "sí"))
     ->
-        codigo_interno(T, Contexto.tramite),
-        flujo_tramite(T, [Paso|Pasos]),
+        informacion_tramite(T, Contexto.tramite, Asincronico, _), 
+        flujo_tramite(T, P ),
+	(   P = [Paso|Pasos]
+	->   
         generar_pregunta_chatgpt(T, Paso, Pregunta),
         format(string(Respuesta),
                "Perfecto, iniciemos el trámite «~w». ~s", [T, Pregunta]),
         assertz(estado(UserID, ejecutar_tramite,
-                       Contexto, [Paso|Pasos]))
+                       Contexto.put(topic,"tramites"), [Paso|Pasos]))
+	;
+	tramite_completado(UserID,T,Contexto.put(topic,"tramites"),Asincronico,Respuesta)
+	)
     ;   sub_string(Lower, _, _, _, "no")
 	->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
 	    append(Contexto.historia, [user-Line], NuevaHistNo),
@@ -172,7 +236,7 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
 procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     retract(estado(UserID, _, Contexto, [Paso|Restantes])),
     string_codes(Line,LineS),
-    codigo_interno(T, Contexto.tramite),
+    informacion_tramite(T, Contexto.tramite, Asincronico, _),
     Paso = paso(Id,_,Tipo,_),
         (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
         ->  assertz(dato_tramite(UserID,T,Id,Line1)),
@@ -181,13 +245,7 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
                 assertz(estado(UserID, ejecutar_tramite,
                                Contexto, Restantes))
             ;
-	        guardar_preguntas_cache,
-	        uuid(TramiteID),
-                exportar_datos_tramite_kafka(UserID,T,TramiteID),
-                esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka),
-                format(string(Respuesta),
-                       "~s\n\n¿En qué otro trámite te puedo ayudar?",
-                       [MensajeKafka])
+	    tramite_completado(UserID,T,Contexto,Asincronico,Respuesta)
             )
         ;   % Respuesta inválida → repreguntar
             generar_repregunta_chatgpt(T,Paso,Respuesta),
@@ -195,6 +253,23 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
                            Contexto, [Paso|Restantes]))
     
     ).
+
+tramite_completado(UserID,T,Contexto,Asincronico,Respuesta) :-
+	        guardar_preguntas_cache,
+	        uuid(TramiteID),
+		(   Asincronico == true
+		->
+		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesAsincronicos"),
+		MensajeKafka = "Tu trámite se está procesando,  te avisaremos cuando esté listo.",
+		       assertz(tramite_en_espera(UserID,T,TramiteID,Contexto))
+		;
+		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesResultados"),
+                esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka)
+		),
+                format(string(Respuesta),
+                       "~s\n\n¿En qué otro trámite te puedo ayudar?",
+                       [MensajeKafka]).
+
 
 
 % ——————————————————————————————————————
@@ -340,9 +415,10 @@ cargar_preguntas_cache :-
 
 guardar_estado_usuarios :-
     open('estado_usuarios.pl', write, S),
-    findall(estado(U, H0, T, R), estado(U, H0, T, R), Es),
-    findall(dato_tramite(U, T, I, V), dato_tramite(U, T, I, V), Ds),
-    append([Es, Ds], Todos),
+    findall(estado(U1, H01, T1, R1), estado(U1, H01, T1, R1),Todos, Ds),
+    findall(dato_tramite(U2, T2, I2, V2), dato_tramite(U2, T2, I2, V2), Ds,Is),
+    findall(tramite_en_espera(U3, T3, ID3, S3), tramite_en_espera(U3, T3, ID3, S3), Is,[]),
+  %  append([Es, Ds,Is], Todos),
     portray_clauses(Todos, S).
 
 cargar_estado_usuarios :-

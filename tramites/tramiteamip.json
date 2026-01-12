@@ -2,6 +2,7 @@
     "Tramite": "certificado de libre deuda AMIP",
     "CodigoInterno": 4,
     "Identificacion": "aa aaaa",
+    "asincronico":false,
     "Variables":
     [
 	{

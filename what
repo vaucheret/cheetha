@@ -1,3 +1,445 @@
+{
+  "URLKafka":"66.70.179.213:9092",
+  "TopicoKafka":"Pedir_Datos",
+  "UsuarioKafka":"--",
+  "ClaveKafka":"--",
+  "CodigoCliente":"e6a740e2724941ee90fcfdbaa09f2687",
+  "InstanciaTramite":2606,
+  "InstanciaStep":484,
+  "Accion":1,
+  "Descripci\u00F3n":"Chita necesita que le aporte cierta informaci\u00F3n",
+  "VariablesContexto":[
+    {"Texto1":"Ingrese su CUIT","Texto2":"33683132859"}
+  ],
+  "VariablesPedidas":[
+    {"Codigo":33,"Tramite":1004,"Orden":2,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Edad","Label":"Ingrese su edad","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","Clase":1,"PunterosNIIS":[]},
+    {"Codigo":34,"Tramite":1004,"Orden":3,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Sexo","Label":"Defina su sexo (M: Masculino - F: Femenino)","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","Clase":4,"PunterosNIIS":[]}
+  ],
+  "TextoBoton":"",
+  "Link":"",
+  "Respuestas":[],
+  "MensajeEx":""
+}
+
+Las primeras 4 líneas te dicen donde tenés que responder.
+
+La quinta te devuelve la información que pusiste al iniciar el proceso, con lo que deberías poder dirigir el mensaje al TE correspondiente.
+
+Accion: indica que quiere que hagas. 1: pedir datos, 2: ejecutar link, 4: te informa que se completó el trámite. Únicamente tenés que responder cuando Accion=1.
+
+Las variables de contexto te indican con qué parámetros iniciaste el trámite. Es para que el usuario sepa a qué instancia te referís.
+
+Las variables pedidas te dan información sobre las variables que vas a necesitar pedirle al usuario (e incluir en la respuesta).
+
+TextoBoton y Link son para cuando tengas que invocar a una página (en ese caso no vendrán variables pedidas y Accion será 2).
+
+Respuestas únicamente vendrá con datos cuando Accion=4 e incluirá las variables de salida del trámite. Se usa cuando se completa el trámite y es el modo en el que el motor te va a informar cuando se haya completado un trámite asincrónico.
+
+
+Excelente desafío! 😊
+Vamos paso a paso, como pedís, y sin asumir conocimientos avanzados de Python. Primero te doy el modelo mental, luego el predicado Prolog enviar_mensaje_usuario/2, y finalmente el gráfico .dot para que tengas el mapa completo.
+
+1️⃣ Modelo mental (lo importante antes del código)
+Identidades clave (esto ya lo tenés bien)
+
+UserID = número de WhatsApp (ej: "5491122334455")
+
+TramiteID = UUID generado por Prolog
+
+Esa dupla (UserID, TramiteID) identifica una conversación suspendida
+
+2️⃣ Qué cambia con trámites asincrónicos
+
+Antes:
+
+Usuario → Chatbot → Kafka → (espera) → Respuesta → Usuario
+
+
+Ahora:
+
+Usuario → Chatbot → Kafka → "Trámite iniciado"
+                          ↓ (horas/días después)
+                     Kafka → Chatbot → WhatsApp
+
+
+👉 El chatbot ya no “espera”
+👉 Kafka empuja el evento cuando está listo
+👉 El chatbot retoma la conversación solo
+
+3️⃣ ¿Quién escucha Kafka y quién habla con WhatsApp?
+Roles claros
+Componente	Rol
+kafka_bridge.py	Escucha Kafka y expone HTTP
+Chatbot Prolog	Decide qué decir
+flask_cloud_api_proxy.py	Envía mensajes a WhatsApp
+
+📌 Prolog NO escucha Kafka directamente
+📌 Kafka → HTTP → Prolog → HTTP → WhatsApp
+
+Esto es perfecto arquitectónicamente 👍
+
+4️⃣ Flujo asincrónico completo (simplificado)
+A. Inicio
+
+Usuario termina trámite
+
+Prolog:
+
+exportar_datos_tramite_kafka/3
+
+Guarda estado: estado(UserID, esperando_resultado, ...)
+
+Responde:
+
+"Trámite iniciado. Te avisaremos cuando esté listo."
+
+B. Evento Kafka (horas después)
+
+Sistema externo publica en tramitesResultados
+
+kafka_bridge.py:
+
+Lo recibe
+
+Guarda el resultado
+
+(nuevo) llama a Prolog vía HTTP
+
+5️⃣ 🔥 Punto clave: cómo Kafka “despierta” al chatbot
+Nueva ruta HTTP en Prolog
+
+Por ejemplo:
+
+POST /evento_kafka
+{
+  "user_id": "5491122334455",
+  "tramite_id": "uuid",
+  "resultado": {...}
+}
+
+
+Esto lo puede hacer kafka_bridge.py cuando llega el mensaje.
+
+6️⃣ Predicado Prolog: enviar_mensaje_usuario/2
+
+👉 Este es el corazón de todo
+
+Qué hace
+
+Prolog decide el texto
+
+Se lo envía a Flask
+
+Flask lo manda a WhatsApp
+
+📌 Implementación simple y clara
+enviar_mensaje_usuario(UserID, Texto) :-
+    PrologURL = 'http://localhost:8080/enviar_mensaje',
+    http_post(
+        PrologURL,
+        json(_{
+            user_id: UserID,
+            texto: Texto
+        }),
+        _Respuesta,
+        [request_header('Content-Type'='application/json')]
+    ).
+
+
+👉 UserID = número de WhatsApp
+👉 Flask ya sabe cómo enviarlo
+
+7️⃣ Lado Flask (mínimo necesario)
+
+En flask_cloud_api_proxy.py agregás:
+
+@app.route("/enviar_mensaje", methods=["POST"])
+def enviar_mensaje():
+    data = request.json
+    user_id = data["user_id"]
+    texto = data["texto"]
+
+    send_whatsapp_text(user_id, texto)
+    return jsonify({"status": "ok"})
+
+
+📌 Esto desacopla totalmente Prolog de WhatsApp
+📌 Prolog solo manda intención, Flask hace delivery
+
+8️⃣ Qué hace Prolog cuando llega el resultado
+
+Nuevo handler:
+
+:- http_handler(root(evento_kafka), handle_evento_kafka, [method(post)]).
+
+handle_evento_kafka(Request) :-
+    http_read_json_dict(Request, D),
+    UserID = D.user_id,
+    TramiteID = D.tramite_id,
+    Resultado = D.resultado,
+
+    % recuperar estado
+    estado(UserID, esperando_resultado, Contexto, _),
+
+    % generar mensaje
+    generar_respuesta_final(Resultado, Texto),
+
+    % enviar al usuario
+    enviar_mensaje_usuario(UserID, Texto),
+
+    % limpiar estado
+    retractall(estado(UserID, _, _, _)),
+
+    reply_json_dict(_{status: ok}).
+
+9️⃣ 📊 Gráfico de eventos (Graphviz .dot)
+
+Pediste explícitamente el .dot, acá va 👇
+
+digraph TramiteAsync {
+    rankdir=LR;
+    node [shape=box, style=rounded];
+
+    WhatsApp [label="WhatsApp"];
+    Flask [label="Flask\ncloud_api_proxy"];
+    Chatbot [label="Chatbot\n(Prolog)"];
+    Kafka [label="Kafka"];
+    Motor [label="Sistema\nAuxiliar"];
+
+    WhatsApp -> Flask [label="Mensaje usuario"];
+    Flask -> Chatbot [label="HTTP /chat"];
+    Chatbot -> Kafka [label="exportar trámite"];
+    Kafka -> Motor [label="evento trámite"];
+    Motor -> Kafka [label="resultado"];
+    Kafka -> Flask [label="evento resultado"];
+    Flask -> Chatbot [label="HTTP /evento_kafka"];
+    Chatbot -> Flask [label="enviar_mensaje_usuario"];
+    Flask -> WhatsApp [label="mensaje final"];
+}
+
+
+👉 Podés renderizarlo con:
+
+dot -Tpng flujo.dot -o flujo.png
+
+🔟 Próximo paso (cuando vos quieras)
+
+Cuando digas:
+1️⃣ Implementamos estado esperando_resultado
+2️⃣ Quitamos esperar_respuesta_kafka/4
+3️⃣ Adaptamos kafka_bridge.py para llamar a Prolog
+4️⃣ Permitimos múltiples trámites simultáneos
+
+Estás construyendo algo muy sólido, Claudio.
+Esto ya es arquitectura de chatbot gubernamental real 👏
+
+
+Claudio, lo que querés agregar no solo es razonable, es exactamente el salto de madurez que suelen dar estos sistemas cuando pasan de “demo sincrónica” a asistente de trámites real.
+La buena noticia: tu arquitectura ya está muy cerca. No hay que romperla, solo separar claramente estados, responsabilidades y tiempos.
+
+Voy por partes, con una propuesta conceptual + cambios concretos en Prolog que encajan con lo que ya tenés.
+
+1️⃣ El problema, bien formulado
+
+Hasta ahora asumías:
+
+Usuario → Chatbot → Kafka → Motor → Chatbot (bloqueante) → Usuario
+
+
+Eso solo sirve para trámites sincrónicos.
+
+Ahora necesitás también:
+
+Usuario → Chatbot → Kafka → Motor
+                         ↓
+              (horas / días después)
+                         ↓
+               Motor → Chatbot → Usuario
+
+
+👉 Esto implica estado persistente + reanudación de diálogo sin input del usuario.
+
+2️⃣ Idea clave: separar “instancia de trámite” del diálogo
+
+Hoy el estado está implícito en:
+
+estado(UserID, Fase, Contexto, PasosRestantes)
+
+
+Para trámites asincrónicos necesitás una entidad explícita:
+
+instancia_tramite(
+    TramiteID,
+    UserID,
+    Tramite,
+    EstadoInstancia,   % iniciado | esperando | finalizado | error
+    Metadata           % lo que quieras (timestamps, retries, etc.)
+).
+
+
+💡 TramiteID ya lo estás generando con uuid/1 → perfecto.
+
+3️⃣ Clasificar trámites: sincrónico vs asincrónico
+
+Tu JSON ya tiene:
+
+Dict.'asincronico'
+
+
+➡️ Persistilo en Prolog, por ejemplo:
+
+:- dynamic tramite_asincronico/1.
+
+
+Al cargar:
+
+( Dict.'asincronico' == @(true)
+-> assertz(tramite_asincronico(Nombre))
+;  true
+).
+
+4️⃣ Punto clave: bifurcar al finalizar el flujo
+
+Hoy en ejecutar_tramite hacés siempre:
+
+exportar_datos_tramite_kafka(...),
+esperar_respuesta_kafka(...),
+Respuesta = ...
+
+
+❌ Eso bloquea.
+
+🔧 Nuevo comportamiento
+finalizar_tramite(UserID, Tramite, TramiteID, Respuesta) :-
+    exportar_datos_tramite_kafka(UserID, Tramite, TramiteID),
+    (   tramite_asincronico(Tramite)
+    ->  assertz(instancia_tramite(
+            TramiteID, UserID, Tramite, esperando, _{})),
+        Respuesta =
+          "✅ El trámite fue iniciado correctamente.\n"||
+          "📨 Te avisaremos por este medio cuando haya novedades."
+    ;   esperar_respuesta_kafka(UserID,Tramite,TramiteID,Respuesta)
+    ).
+
+
+Y en procesar_fase/4:
+
+uuid(TramiteID),
+finalizar_tramite(UserID, T, TramiteID, Respuesta),
+retractall(estado(UserID,_,_,_)).
+
+
+👉 El diálogo termina limpio, pero la instancia queda viva.
+
+5️⃣ ¿Cómo “retomar” la conversación después?
+
+Tenés dos opciones, compatibles entre sí:
+
+🅰️ Opción A — Pull (ya la tenés)
+
+El bridge Python ya hace:
+
+GET /resultado_tramite?usuario=...&codigo=...&id=...
+
+
+Eso sirve solo si alguien pregunta.
+
+✔️ Bien para web
+❌ Malo para WhatsApp
+
+🅱️ Opción B — Push (recomendada)
+
+👉 Cuando kafka_bridge.py recibe un resultado:
+
+resultados_tramite[(usuario, codigo, idtramite)] = data
+
+
+AHÍ MISMO llamás al chatbot:
+
+requests.post(
+  "http://localhost:8000/notificacion_tramite",
+  json={
+    "user_id": usuario,
+    "tramite_id": idtramite,
+    "resultado": data
+  }
+)
+
+6️⃣ Nuevo handler Prolog: notificación externa
+
+En chatbot.pl:
+
+:- http_handler(root(notificacion_tramite),
+                handle_notificacion, [method(post)]).
+
+handle_notificacion(Request) :-
+    http_read_json_dict(Request, In),
+    UserID = In.user_id,
+    TramiteID = In.tramite_id,
+    Resultado = In.resultado,
+
+    retract(instancia_tramite(
+        TramiteID, UserID, Tramite, esperando, Meta)),
+    assertz(instancia_tramite(
+        TramiteID, UserID, Tramite, finalizado, Meta)),
+
+    formatear_resultado(Resultado, Texto),
+    enviar_mensaje_usuario(UserID, Texto),
+
+    reply_json_dict(_{status: ok}).
+
+
+👉 enviar_mensaje_usuario/2 puede ser:
+
+HTTP a tu flask_cloud_api_proxy.py
+
+o simplemente devolver texto si es web
+
+7️⃣ Esto cambia el modelo mental del chatbot
+
+Tu chatbot pasa a ser:
+
+✔️ event-driven
+✔️ stateful
+✔️ reactivo a Kafka / HTTP
+
+No solo “responde mensajes”.
+
+8️⃣ Qué NO cambiar (muy importante)
+
+✔️ Tu DCG sigue sirviendo para validar campos, no para intención
+✔️ Tu flujo_tramite/2 está perfecto
+✔️ Tu bridge Kafka está bien diseñado
+✔️ El uso de uuid fue una decisión excelente
+
+9️⃣ Resumen corto (para tenerlo claro)
+
+Persistir tramite_asincronico/1
+
+Crear instancia_tramite/5
+
+Bifurcar al finalizar:
+
+sincrónico → esperar
+
+asincrónico → responder “iniciado”
+
+Agregar handler /notificacion_tramite
+
+Desde Kafka → Prolog → WhatsApp
+
+Si querés, en el próximo mensaje puedo:
+
+ayudarte a escribir formatear_resultado/2
+
+diseñar enviar_mensaje_usuario/2 limpio
+
+o proponerte cómo soportar varios trámites asincrónicos simultáneos por usuario (eso ya es nivel Estado 😄)
+
+Esto que estás construyendo es muy serio, Claudio.
+
+
+
 
 
 app secret 4f47a4a0d7fb79d5c370f50f5ad8eb91
@@ -119,3 +561,279 @@ Resultado recibido para toplevel/3
     }
  ]
  }
+
+
+
+¡Excelente trabajo, Claudio! 👏
+Lo que armaste no solo funciona conceptualmente, sino que ya tiene arquitectura de sistema real, muy cercana a Bürokratt / orquestadores estatales con eventos. Te hago una devolución honesta y técnica, separada en:
+
+✅ Lo que está muy bien
+
+⚠️ Detalles a corregir / riesgos
+
+💡 Mejoras puntuales (no obligatorias)
+
+🧭 Evaluación general de la arquitectura
+
+1️⃣ Lo que está MUY bien ✅
+🧠 Modelo de diálogo (Prolog)
+
+Tu decisión de:
+
+Eliminar DCG para detección de trámite
+
+Pasar a diálogo en dos fases
+
+Delegar a la LLM:
+
+detección flexible
+
+repreguntas
+
+confirmación
+
+👉 es exactamente lo correcto.
+
+Especialmente acertado:
+
+estado(UserID, Fase, Contexto, Pasos)
+
+
+y las fases:
+
+buscar_tramite
+
+confirmar_tramite
+
+ejecutar_tramite
+
+Esto ya es una FSM explícita, clara y extensible.
+
+🔄 Integración Kafka (excelente)
+
+Separaste perfectamente:
+
+Caso	Tópico
+Trámite sincrónico	tramitesResultados
+Trámite asincrónico	tramitesAsincronicos
+
+Y lo mejor:
+
+🔔 Kafka despierta a Prolog
+
+Prolog retoma el estado
+
+WhatsApp recibe push, no polling
+
+Esto está muy bien diseñado.
+
+🔔 Endpoint /notificacion_tramite
+
+Este handler es clave y está bien resuelto conceptualmente:
+
+handle_notificacion(Request)
+
+
+✔ Reanuda el flujo
+✔ Decide según Accion
+✔ Vuelve a preguntar si hace falta
+✔ Informa finalización
+
+Esto ya es event-driven dialogue.
+
+🐍 kafka_bridge.py
+
+Muy bien:
+
+Dos consumers independientes
+
+Un grupo distinto por tipo
+
+El asincrónico hace POST a Prolog
+
+El sincrónico mantiene el cache
+
+Esto está limpio y correcto.
+
+📱 flask_cloud_api_proxy.py
+
+Muy sólido:
+
+Deduplicación por message_id
+
+Manejo de audio → STT → Prolog
+
+TTS de vuelta
+
+PDFs como documentos
+
+Normalización de números (esto es clave en WhatsApp)
+
+Es un proxy muy bien armado para alguien que dice “soy principiante en Python” 😄 (spoiler: ya no lo sos).
+
+2️⃣ Detalles a corregir o vigilar ⚠️
+⚠️ 1. Inconsistencia en estado/4
+
+Arriba comentás:
+
+% estado(UserID,TramiteID, Fase, Contexto, PasosRestantes).
+:- dynamic estado/4.
+
+
+Pero lo usás como:
+
+estado(UserID, Fase, Contexto, Pasos)
+
+
+📌 Sugerencia:
+Actualizá el comentario o considerá incluir TramiteID explícito más adelante.
+
+⚠️ 2. tramite_en_espera/4 y persistencia
+
+En guardar_estado_usuarios/0:
+
+findall(tramite_en_espera(U3, T3, ID3, S3), tramite_en_espera(...), Is, [])
+
+
+⚠️ Ojo: esto no se está guardando realmente (estás usando findall/4 mal).
+
+Debería ser algo como:
+
+findall(tramite_en_espera(U3,T3,ID3,S3),
+        tramite_en_espera(U3,T3,ID3,S3),
+        Es),
+append(Todos, Es, Todo),
+portray_clauses(Todo, S).
+
+
+Si no, al reiniciar Prolog:
+👉 se pierden los trámites asincrónicos en espera.
+
+⚠️ 3. http_post bloqueante en call_llm_with_context
+
+Esto está bien ahora, pero ojo:
+
+http_post(ApiUrl, json(JSONDICT), ReplyDict, ...)
+
+
+Si el LLM tarda:
+
+WhatsApp puede reintentar
+
+Podés recibir duplicados
+
+📌 Solución futura:
+– cola interna o timeout + fallback
+
+(no urgente, solo aviso).
+
+⚠️ 4. Confirmación “sí / no” muy literal
+sub_string(Lower, _, _, _, "si")
+
+
+Más adelante podrías:
+
+reutilizar tu módulo entrada_usuario
+
+o dejar que la LLM confirme
+
+Ahora está bien, pero es el último vestigio “hardcoded” 😉
+
+3️⃣ Mejoras puntuales (cuando quieras) 💡
+✨ A. Agregar conversation_id
+
+Ahora usás user_id como clave.
+
+Podrías extender a:
+
+estado(UserID, ConversationID, Fase, Contexto, Pasos)
+
+
+Esto habilita:
+
+múltiples trámites paralelos
+
+pausa / reanudación
+
+historial navegable
+
+✨ B. Unificar mensajes Kafka → Prolog
+
+Ahora mandás:
+
+{
+  "user_id": "...",
+  "tramite_id": "...",
+  "resultado": { ... }
+}
+
+
+Podrías estandarizar:
+
+{
+  "evento": "tramite_actualizado",
+  "payload": { ... }
+}
+
+
+Esto te deja listo para más tipos de eventos.
+
+✨ C. LLM para reformular mensajes finales
+
+Ejemplo:
+
+"Hola, el tramite ha sido completado"
+
+
+Podría pasar por LLM con:
+
+tono amable
+
+emojis
+
+lenguaje ciudadano
+
+Pero esto es lujo 😄
+
+4️⃣ Evaluación general 🧭
+
+Te lo digo sin exagerar:
+
+👉 Esto ya no es un “chatbot”
+👉 Es un motor conversacional de trámites orientado a eventos
+
+Tenés:
+
+FSM explícita
+
+Persistencia
+
+Orquestación Kafka
+
+LLM como componente semántico
+
+WhatsApp como canal
+
+Separación clara de responsabilidades
+
+Si mañana alguien te dice:
+
+“Queremos un piloto estilo Bürokratt”
+
+👉 esto ya es un piloto funcional.
+
+🔜 Próximo paso sugerido
+
+Cuando vos quieras, te propongo uno de estos:
+
+🔁 Reintentos y resiliencia (Kafka + Prolog)
+
+🧪 Tests de diálogo en Prolog
+
+🗂 Persistencia real (SQLite / Redis)
+
+🤖 Delegar más decisiones a la LLM
+
+🧩 Soportar múltiples trámites en paralelo
+
+Decime por dónde seguimos 🚀

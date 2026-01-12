@@ -1,0 +1,69 @@
+digraph chat_assistant {
+    rankdir=LR; // Dirección de izquierda a derecha
+    node [shape=box, style=filled];
+    
+    // Fases existentes
+    buscar_tramite [label="Buscar Trámite" shape=box fillcolor=blue];
+    confirmar_tramite [label="Confirmar Trámite" shape=box fillcolor=blue];
+    ejecutar_tramite [label="Ejecutar Trámite (por Kafka)" shape=box fillcolor=blue];
+    en_espera [label="En Espera de respuesta del motor" shape=box ];
+    espera_manual [label="Listar Pasos y Esperar Respuesta Manual" shape=box];
+    seleccionar_tramite [label="Seleccionar Trámite en Curso" shape=box];
+
+    // Fases planeadas
+    identificar_usuario [label="Identificar Usuario (si es necesario)"  shape=box];
+    // Puedes agregar otras fases planeadas aquí
+
+    // Transiciones
+    buscar_tramite -> confirmar_tramite [label="Trámite Reconocido" color=blue];
+    buscar_tramite -> seleccionar_tramite [label="Hay Varios Trámites en Curso"];
+    
+    confirmar_tramite -> identificar_usuario [label="Necesita Identificación"];
+    confirmar_tramite -> ejecutar_tramite [label="Puede Ejecutar por Kafka" color=blue];
+    confirmar_tramite -> en_espera [label="Puede Ejecutar por Kafka (asincronico)"];
+    confirmar_tramite -> espera_manual [label="Listar Pasos"];
+    
+    // Arco adicional desde identificar usuario a confirmar tramite
+    identificar_usuario -> confirmar_tramite [label="Identificado"];
+
+    // De "Seleccionar Trámite" se va a "Confirmar Trámite"
+    seleccionar_tramite -> confirmar_tramite [label="Trámite Seleccionado"];
+
+    // Ciclo en fase de buscar trámite
+    buscar_tramite -> buscar_tramite [label="No se Reconoce Trámite" color=blue];
+    
+    // De "Esperar Respuesta Manual" puede regresar por "Trámite No Resuelto"
+    espera_manual -> buscar_tramite [label="Necesita un Trámite Previo"];
+}
+
+// digraph chat_assistant {
+//     rankdir=LR; // Dirección de izquierda a derecha
+
+//     // Fases existentes
+//     buscar_tramite [label="Buscar Trámite" shape=box];
+//     confirmar_tramite [label="Confirmar Trámite" shape=box];
+//     ejecutar_tramite [label="Ejecutar Trámite (por Kafka)" shape=box];
+//     espera_manual [label="Listar Pasos y Esperar Respuesta Manual" shape=box];
+
+//     // Fases planeadas
+//     identificar_usuario [label="Identificar Usuario (si es necesario)" style=dashed shape=box];
+//     // Puedes agregar otras fases planeadas aquí
+
+//     // Transiciones
+//     buscar_tramite -> confirmar_tramite [label="Trámite Reconocido"];
+    
+//     confirmar_tramite -> identificar_usuario [label="Necesita Identificación"];
+//     confirmar_tramite -> ejecutar_tramite [label="Puede Ejecutar por Kafka"];
+//     confirmar_tramite -> espera_manual [label="Trámite Asíncrono, Listar Pasos"];
+    
+//     // Arco adicional desde identificar usuario a confirmar tramite
+//     identificar_usuario -> confirmar_tramite [label="Identificado"];
+
+//     // Ciclo en fase de buscar trámite
+//     buscar_tramite -> buscar_tramite [label="No se Reconoce Trámite"];
+    
+//     // De "Esperar Respuesta Manual" puede regresar por "Trámite No Resuelto"
+//     espera_manual -> buscar_tramite [label="Necesita un Trámite Previo"];
+// }
+
+

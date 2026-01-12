@@ -1,0 +1,48 @@
+digraph TramiteAsync {
+    rankdir=LR;
+    node [shape=box, style=filled];
+
+    WEB [label="Cliente Web",fillcolor=yellow];
+    WhatsApp [label="WhatsApp",fillcolor=yellow];
+    Flask [label="Flask\ncloud (python)",fillcolor=green];
+    Chatbot [label="Chatbot\n(Prolog)",fillcolor=red];
+    Kafka [label="Kafka bridge (python)",fillcolor=green];
+    Motor [label="Motor",fillcolor=yellow];
+
+    WhatsApp -> Flask [label="Mensaje usuario",color=blue]; 
+    Flask -> Chatbot [label="HTTP /chat",color=blue];
+    Chatbot -> Flask  [label="Respuesta",color=blue];
+    Chatbot -> WEB  [label="Respuesta",color=blue]; 
+    WEB -> Chatbot [label="HTTP /chat",color=blue];
+    Chatbot -> Kafka [label="exportar trámite",color=blue];
+    Kafka -> Motor [label="evento trámite",color=blue];
+    Motor -> Kafka [label="resultado",color=blue];
+    Motor -> Kafka [label="solicitar datos/resultado",color=red];
+    Kafka -> Chatbot [label="evento resultado",color=blue];
+    Kafka -> Chatbot [label="HTTP /notificacion_tramite",color=red];
+    Chatbot -> Flask [label="enviar_mensaje_usuario",color=red];
+    Flask -> WhatsApp [label="inicia Dialogo",color=red];
+    Chatbot -> WEB [label="inicia Dialogo",color=red];
+    Flask -> WhatsApp [label="mensaje Respuesta",color=blue]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;
+
+}
+

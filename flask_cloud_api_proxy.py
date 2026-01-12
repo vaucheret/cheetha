@@ -211,6 +211,17 @@ def verify():
         return "Forbidden", 403
 
 
+@app.route("/enviar_mensaje", methods=["POST"])
+def enviar_mensaje():
+    data = request.json
+    user_id = data["user_id"]
+    texto = data["texto"]
+
+    send_whatsapp_text(user_id, texto)
+    return jsonify({"status": "ok"})
+
+
+    
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()

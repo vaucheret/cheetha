@@ -20,3 +20,5 @@ pregunta_cache('certificado de deudor alimentario', '28', '¿Podría por favor p
 pregunta_cache('certificado de libre deuda amip', '25', 'Por favor, ¿podría proporcionar su CUIT para poder tramitar su certificado de libre deuda amip?').
 pregunta_cache('certificado deudor moroso alimentario', '28', '¿Podría proporcionarme amablemente su CUIT para completar el trámite del certificado de deudor moroso alimentario?').
 pregunta_cache('libre deuda municipio de escobar', '19', 'Por favor, ¿podría proporcionarme el CUIT del usuario para poder completar el trámite de libre deuda en el municipio de Escobar? Gracias.').
+pregunta_cache('crear credencial verificable', '33', '¿Podría por favor proporcionarnos su edad para completar el proceso de creación de su credencial verificable?').
+pregunta_cache('crear credencial verificable', '34', '¿Podrías por favor indicar tu sexo para completar el proceso de creación de tu credencial verificable? Por favor selecciona entre Masculino (M) o Femenino (F). ¡Gracias!').

@@ -1,7 +1,8 @@
 {
     "Tramite": "DNI",
     "CodigoInterno": "332", 
-    "Identificacion": "Anastasio Perez - Los Andes 25", 
+    "Identificacion": "Anastasio Perez - Los Andes 25",
+    "asincronico":false,
     "Variables":
     [
 	{

@@ -1,7 +1,8 @@
 {
     "Tramite": "partida de nacimiento",
     "CodigoInterno": "999122222", 
-    "Identificacion": "Juan Saborido - Los Andes 25", 
+    "Identificacion": "Juan Saborido - Los Andes 25",
+    "asincronico":false,
     "Variables":
     [
 	{

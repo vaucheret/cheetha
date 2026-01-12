@@ -1,7 +1,8 @@
 {
     "Tramite": "pasaporte",
     "CodigoInterno": "122122223", 
-    "Identificacion": "Pedro Savorido - Los Andes 25", 
+    "Identificacion": "Pedro Savorido - Los Andes 25",
+    "asincronico":false,
     "Variables":
        [
 	   {
