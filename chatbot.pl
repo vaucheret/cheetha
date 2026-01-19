@@ -102,7 +102,7 @@ handle_notificacion(Request) :-
 		).
 
 enviar_mensaje_usuario(UserID, Texto) :-
-    PrologURL = 'http://localhost:8080/enviar_mensaje',
+    PrologURL = 'http://localhost:8070/enviar_mensaje',
     http_post(
         PrologURL,
         json(_{

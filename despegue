@@ -5,7 +5,7 @@
 ( 4. ir a configuracion de la api y generar token de accesso temporal )
 
 5. ponerlo en flack_cloud y levantarlo
-6. llamar al ngrok http http://localhost:8080
+6. llamar al ngrok http http://localhost:8070
 7. verificar el webhooks  con  direccionngrok/webhook y mitokendeverificacion1739
 
 tramite_json 8090 -> 7090
