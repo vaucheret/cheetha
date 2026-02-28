@@ -3,6 +3,7 @@
     "CodigoInterno": "332", 
     "Identificacion": "Anastasio Perez - Los Andes 25",
     "asincronico":false,
+    "loginNecesario":0,
     "Variables":
     [
 	{

@@ -1,0 +1,29 @@
+digraph chat_assistant {
+    rankdir=TB; 
+    node [shape=box, style=filled];
+    
+    // Fases existentes
+    buscar_tramite [label="Buscar Trámite" shape=box fillcolor=blue];
+    confirmar_continuar_tramite [label="Confirmar continuar Trámite" shape=box fillcolor=magenta];
+    confirmar_tramite [label="Confirmar Trámite" shape=box fillcolor=green];
+    ejecutar_tramite [label="Ejecutar Trámite" shape=box fillcolor=red];
+    en_pausa [label="Tramite en Pausa" shape=box ];
+    cancelado [label="Tramite Cancelado" shape=box ];
+    // Transiciones
+
+    buscar_tramite -> confirmar_continuar_tramite [label="accion -> continuar" fontcolor=blue];
+    buscar_tramite -> confirmar_tramite [label="accion -> nuevo" fontcolor=blue];
+    buscar_tramite -> buscar_tramite [label="accion -> preguntar" fontcolor=blue];
+    
+    confirmar_tramite -> ejecutar_tramite [label="intencion -> confirmar_si" fontcolor=green];
+    confirmar_tramite -> buscar_tramite [label="intencion -> confirmar_no" fontcolor=green];
+    confirmar_tramite -> confirmar_tramite [label="intencion -> ambigua" fontcolor=green];
+    
+    confirmar_continuar_tramite -> ejecutar_tramite [label="intencion -> confirmar_si" fontcolor=magenta];
+    confirmar_continuar_tramite -> buscar_tramite [label="intencion -> confirmar_no" fontcolor=magenta];
+    confirmar_continuar_tramite -> confirmar_continuar_tramite [label="intencion -> ambigua" fontcolor=magenta];
+
+    ejecutar_tramite -> en_pausa [label="intencion -> pausar_tramite" fontcolor=red];
+    ejecutar_tramite -> cancelado [label="intencion -> cancelar_tramite" fontcolor=red];
+    ejecutar_tramite -> ejecutar_tramite [label="intencion -> continuar" fontcolor=red];
+}

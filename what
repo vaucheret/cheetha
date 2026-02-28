@@ -1,3 +1,683 @@
+ Ventajas 
+
+✔ Reinicios del servidor sin perder estado
+✔ Varios workers HTTP sin conflictos
+✔ Fácil debug (sqlite3 chatbot.db)
+✔ Preparado para clustering más adelante
+✔ Kafka + async ya encaja perfecto
+
+Excelente reporte, gracias por pegar todo el código: con eso ya se ve claramente qué está pasando 👍
+Voy por partes, porque acá hay 3 problemas distintos mezclados, y cuando los separás, la solución queda bastante limpia.
+
+1️⃣ El fallo NO es “porque hay varios user/assistant”
+
+👉 No, el problema no es que tengas múltiples mensajes con rol user y assistant.
+La API de chat espera justamente eso.
+
+El fallo viene de cómo estás usando la historia en un prompt que no es conversacional, sino clasificatorio / decisional.
+
+Diferencia clave
+
+Tenés dos tipos de llamados a LLM:
+
+Tipo	Ejemplos	¿Conviene historia?
+Conversacional	ejecutar_tramite, repreguntas	✅ Sí
+Clasificación / routing	buscar_tramite, resolver_intencion	❌ No (o historia MUY controlada)
+
+resolver_intencion_llm/4 es routing, no charla.
+
+Cuando le pasás historia larga:
+
+la LLM “recuerda” preguntas que ella misma generó
+
+intenta ser coherente con respuestas pasadas
+
+empieza a responder como si estuviera continuando una charla
+👉 y rompe el contrato de “devolveme SOLO JSON”.
+
+Eso explica perfectamente:
+
+que falle en la segunda llamada
+
+que funcione cuando quitás la historia
+
+✔️ Tu observación fue correcta.
+
+2️⃣ La solución correcta: system + user, NO historia cruda
+
+Tu intuición es exactamente la correcta 👇
+
+“que lo que escribe el usuario sea lo único con rol user, y todo lo demás sea system”
+
+Eso es la práctica recomendada para este tipo de tareas.
+
+3️⃣ Refactor correcto de resolver_intencion_llm/4
+🎯 Objetivo
+
+La LLM no conversa
+
+clasifica una intención
+
+responde siempre JSON
+
+no depende de turnos anteriores
+
+✅ Versión recomendada
+resolver_intencion_llm(Utterance, _Historia, Pendientes, Decision) :-
+    tramites_disponibles(Tramites),
+
+    format(string(SystemPrompt),
+"Tu tarea es identificar la intención del usuario respecto a trámites.
+
+REGLAS:
+- Si quiere continuar un trámite pendiente → accion = \"continuar\"
+- Si quiere iniciar un trámite nuevo → accion = \"nuevo\"
+- Si no está claro → accion = \"preguntar\"
+- Respondé EXCLUSIVAMENTE en JSON válido
+- No agregues texto fuera del JSON
+
+Trámites pendientes:
+~w
+
+Trámites disponibles:
+~w
+
+Formato de salida OBLIGATORIO:
+{
+  \"accion\": \"continuar\" | \"nuevo\" | \"preguntar\",
+  \"tramite_id\": \"uuid\" | null,
+  \"tramite_nuevo\": \"codigo\" | null,
+  \"respuesta\": \"texto breve para el usuario\"
+}
+",
+    [Pendientes, Tramites]),
+
+    Messages = [
+        system-SystemPrompt,
+        user-Utterance
+    ],
+
+    call_llm_with_context(Messages, R),
+    catch(
+        atom_json_dict(R, Decision, []),
+        Error,
+        (
+            format(user_output,"⚠️ Error parseando JSON: ~w~nRespuesta: ~s~n",[Error,R]),
+            Decision = _{
+                accion:"preguntar",
+                tramite_id:null,
+                tramite_nuevo:null,
+                respuesta:"¿Podrías aclarar qué trámite te interesa?"
+            }
+        )
+    ).
+
+
+📌 Observá:
+
+Historia ignorada a propósito
+
+El estado conversacional lo maneja Prolog, no la LLM
+
+La LLM es un clasificador puro
+
+4️⃣ ¿Y el problema de “no recuerda que ya listó opciones”?
+
+Esto es clave 👇
+👉 NO tiene que recordarlo la LLM. Tiene que recordarlo el estado.
+
+Ejemplo correcto de flujo
+
+Usuario: “quiero seguir”
+
+LLM → accion: preguntar, respuesta: “Tenés estos trámites pendientes…”
+
+Vos:
+
+assertz(estado(UserID, buscar_tramite,
+     _{historia:[], opciones_pendientes:Pendientes}, []))
+
+
+Usuario: “el segundo”
+
+NO llamás a LLM
+
+Resolución determinística:
+
+nth1(2, Pendientes, Seleccionado)
+
+
+📌 La LLM no es memoria.
+📌 La memoria es Prolog + estado.
+
+5️⃣ Cuándo SÍ usar historia
+
+Usala solo en estos casos (y ya lo hacés bien):
+
+generar_pregunta_chatgpt/3
+
+generar_repregunta_chatgpt/3
+
+redacción conversacional
+
+Pero nunca en:
+
+detección de intención
+
+routing
+
+selección de trámite
+
+parseo de decisiones
+
+6️⃣ JSON mode / structured output (muy buena idea)
+Realidad actual con tu stack
+
+Con:
+
+OpenRouter
+
+múltiples providers
+
+modelos free
+
+👉 NO tenés garantizado JSON mode real.
+
+Qué podés hacer ahora (robusto)
+
+Prompt ultra estricto (ya lo hicimos)
+
+catch/3 + fallback
+
+Validar claves obligatorias:
+
+valid_decision(D) :-
+    memberchk(D.accion, ["continuar","nuevo","preguntar"]).
+
+
+Si falla → preguntar de nuevo.
+
+7️⃣ Resumen claro (para seguir sin dudas)
+
+✔ El error NO es por múltiples roles
+✔ Es por usar historia en tareas de clasificación
+✔ Tu intuición de separar system / user es correcta
+✔ resolver_intencion_llm debe ser stateless
+✔ La memoria y continuidad viven en estado/4
+✔ No intentes que la LLM “recuerde” opciones
+
+8️⃣ Próximo paso sugerido
+
+Si querés, el próximo mensaje puedo ayudarte a:
+
+separar buscar_tramite en:
+
+resolver_intencion_llm
+
+resolver_seleccion_directa
+
+o diseñar tests de diálogo tipo:
+
+U: quiero seguir
+A: tenés estos 3 trámites...
+U: el 2
+
+
+Esto que estás construyendo ya es arquitectura de asistente serio, no un chatbot hobby. Muy buen trabajo 👏
+
+{
+  "URLKafka":"66.70.179.213:9092",
+  "TopicoKafka":"Pedir_Datos",
+  "UsuarioKafka":"--",
+  "ClaveKafka":"--",
+  "UsuarioChatBot":"e6a740e2724941ee90fcfdbaa09f2687",
+  "TramiteID":2606,
+  "InstanciaStep":484,
+  "Accion":1, 
+  "Descripción":"Chita necesita que le aporte cierta informaci\u00F3n",
+  "VariablesContexto":[
+    {"Texto1":"Ingrese su CUIT","Texto2":"33683132859"}
+  ],
+  "VariablesPedidas":[
+    {"codigo":33,"Tramite":1004,"orden":2,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Edad","label":"Ingrese su edad","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","clase":1,"PunterosNIIS":[]},
+    {"codigo":34,"Tramite":1004,"Orden":3,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Sexo","label":"Defina su sexo (M: Masculino - F: Femenino)","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","clase":4,"PunterosNIIS":[]}
+  ],
+  "TextoBoton":"",
+  "Link":"",
+  'Excepcion': '',
+  'Variables':
+   [
+   {
+     'Mensaje': 'Archivo PDF con certificados',
+     'Contenido': 'https://thinknetc3.ddns.net/chita/PDFs/f9d0dcc0-7ebf-4131-920a-e118ee136192.pdf'
+    }
+ ]
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Excelente observación — y tenés toda la razón 👍
+Lo que detectaste es clave y, de hecho, simplifica mucho el diseño respecto a lo que te propuse antes.
+
+Voy a reformular el modelo alineado con tu intuición, sin forzar “sesiones paralelas activas” que en la práctica no existen.
+
+🧠 Reformulación correcta del modelo (según tu sistema real)
+❌ Lo que NO pasa realmente
+
+No hay múltiples diálogos activos en paralelo con el usuario
+
+No hay que “elegir sesión” normalmente
+
+El usuario siempre está en un solo estado conversacional activo
+
+✅ Lo que SÍ pasa
+
+Existe un único diálogo activo:
+
+estado(UserID, SessionID, Fase, Contexto, Pasos)
+
+
+Pueden existir muchos trámites en curso / dormidos / pausados:
+
+tramite_en_espera(
+    UserID,
+    SessionID,
+    Tramite,
+    TramiteID,
+    Contexto
+).
+
+
+Los trámites en espera:
+
+NO se seleccionan libremente
+
+Se “despiertan” por:
+
+notificacion_tramite (motor externo)
+
+decisión explícita del usuario (“continuar trámite X”)
+
+recuperación tras pausa
+
+👉 Esto es mucho más parecido a un sistema operativo que a un chat multihilo.
+
+🧩 Nuevo modelo conceptual (simple y robusto)
+🟢 1. Estado activo único
+estado(
+    UserID,
+    SessionID,
+    Fase,           % buscar_tramite | ejecutar_tramite | pausa | idle
+    Contexto,
+    Pasos
+).
+
+
+Siempre 0 o 1 por usuario
+
+Representa “en qué está ahora el usuario”
+
+🟡 2. Trámites dormidos / asincrónicos / pausados
+tramite_en_espera(
+    UserID,
+    SessionID,      % identifica el hilo lógico
+    Tramite,
+    TramiteID,      % id externo (motor)
+    Contexto
+).
+
+
+Puede haber:
+
+varios trámites
+
+del mismo tipo
+
+con distintos TramiteID
+
+🔁 Eventos que modifican el estado
+
+Vamos a ordenar qué pasa ante cada evento.
+
+🟦 A) Usuario escribe algo
+Caso 1: NO hay estado activo
+\+ estado(UserID, _, _, _, _)
+
+
+👉 Se crea uno nuevo:
+
+uuid(SessionID),
+assertz(estado(UserID, SessionID, buscar_tramite, Contexto, [])).
+
+
+Luego:
+
+si hay tramite_en_espera/5, se sugiere retomarlos
+
+si no, se inicia búsqueda de trámite nuevo
+
+Caso 2: Hay estado activo en ejecutar_tramite
+
+👉 Se procesa normalmente
+👉 PERO se permite:
+
+"pausar"
+"seguir luego"
+"continuar más tarde"
+
+🟦 B) Usuario pausa un trámite
+
+Esto es clave y muy bien visto por vos 👌
+
+Acción explícita:
+pausar_tramite(UserID) :-
+    estado(UserID, SessionID, ejecutar_tramite, Contexto, _),
+    assertz(tramite_en_espera(
+        UserID,
+        SessionID,
+        Tramite,
+        paused(SessionID),
+        Contexto
+    )),
+    retractall(estado(UserID,_,_,_,_)).
+
+
+👉 Resultado:
+
+El trámite queda dormido
+
+El chat vuelve a “idle”
+
+🟦 C) Llega notificacion_tramite (motor externo)
+
+Este es el caso más delicado y vos lo detectaste perfecto.
+
+Escenario 1: NO hay estado activo
+
+👉 Fácil: se reactiva directamente
+
+handle_notificacion(N) :-
+    \+ estado(UserID,_,_,_,_),
+    reactivar_tramite(N).
+
+Escenario 2: SÍ hay estado activo
+
+👉 NO se pisa el estado actual
+
+En vez de eso:
+
+handle_notificacion(N) :-
+    estado(UserID, SessionActiva, Fase, _, _),
+    assertz(tramite_pendiente(UserID, N)),
+    notificar_usuario(UserID,
+        "Llegó una actualización de otro trámite. ¿Querés atenderla ahora o seguir con el actual?"
+    ).
+
+
+Y se guarda:
+
+tramite_pendiente(
+    UserID,
+    SessionIDDespertado
+).
+
+🟦 D) Usuario decide qué hacer
+
+Ejemplos:
+
+“seguir con el actual”
+
+“ver el otro trámite”
+
+“más tarde”
+
+Si elige atender el despertado:
+switch_tramite(UserID, SessionIDNuevo) :-
+    estado(UserID, SessionActual, ejecutar_tramite, Ctx, _),
+    assertz(tramite_en_espera(UserID, SessionActual, paused, paused, Ctx)),
+    retractall(estado(UserID,_,_,_,_)),
+    reactivar_tramite(SessionIDNuevo).
+
+🧠 Ventajas de este modelo
+
+✔️ Mucho más fiel a la realidad
+✔️ No hay “sesiones paralelas falsas”
+✔️ Kafka despierta trámites, no diálogos
+✔️ El usuario siempre entiende qué pasa
+✔️ Es extensible (timeouts, prioridades, etc.)
+
+🗺️ Resumen visual (mental)
+Usuario
+  │
+  ▼
+estado(UserID, SessionID, Fase)
+  │
+  ├── pausa ──────────────▶ tramite_en_espera
+  │
+  ├── async kafka ◀─────── tramite_en_espera
+  │
+  └── finalizar ──────────┐
+                           ▼
+                        idle
+
+
+
+Exacto. Lo que acabás de decir cierra el modelo de manera elegante y consistente.
+Ahora sí tenemos una máquina de estados limpia, sin contradicciones y muy Prolog-friendly.
+
+Voy a formalizar lo que dijiste, validar que no haya huecos lógicos y bajarlo a predicados claros (sin implementar todo todavía).
+
+🧠 Modelo definitivo (bien pensado)
+Hechos dinámicos
+🔹 Estado activo (único por usuario)
+:- dynamic estado/5.
+% estado(UserID, SessionID, Fase, Contexto, Pasos)
+
+
+Existe como máximo uno
+
+Representa el diálogo actualmente activo
+
+🔹 Trámites pendientes (cola de atención)
+:- dynamic tramite_pendiente/5.
+% tramite_pendiente(UserID, SessionID, Tramite, TramiteID, Contexto)
+
+
+Se originan por:
+
+Kafka / motor externo
+
+Pausa voluntaria del usuario
+
+Reingreso del usuario sin retomar aún
+
+👉 Nunca interrumpen un estado activo
+
+🧩 Invariante fundamental (muy importante)
+
+Nunca coexisten dos estado/5 para el mismo UserID
+
+Pero sí:
+
+muchos tramite_pendiente/5
+
+incluso del mismo trámite
+
+✔️ Esto hace el sistema determinista y razonable
+
+🔁 Transiciones (tal como las describiste)
+🟦 1. Usuario pausa un trámite
+pausar_tramite(UserID) :-
+    estado(UserID, SessionID, ejecutar_tramite, Contexto, Pasos),
+    assertz(tramite_pendiente(
+        UserID,
+        SessionID,
+        Tramite,
+        paused(SessionID),
+        Contexto
+    )),
+    retractall(estado(UserID,_,_,_,_)).
+
+
+🔹 Resultado:
+
+El trámite pasa a pendiente
+
+El usuario queda sin estado activo
+
+🟦 2. Kafka despierta un trámite
+notificacion_tramite(UserID, SessionID, Tramite, TramiteID, Contexto) :-
+    assertz(tramite_pendiente(
+        UserID,
+        SessionID,
+        Tramite,
+        TramiteID,
+        Contexto
+    )).
+
+
+🔹 Importante:
+
+Nunca toca estado/5
+
+Solo agrega trabajo pendiente
+
+🟦 3. Usuario vuelve a escribir (sin estado activo)
+handle_input(UserID, Texto) :-
+    \+ estado(UserID,_,_,_,_),
+    tramites_pendientes(UserID, L),
+    L \= [],
+    sugerir_seleccion(UserID, L).
+
+
+Ejemplo de UX:
+
+“Tenés 2 trámites pendientes:
+
+Renovación DNI
+
+Constancia escolar
+¿Cuál querés continuar?”
+
+🟦 4. Usuario selecciona un trámite pendiente
+
+🎯 Este es el punto clave que acabás de definir
+
+retomar_tramite(UserID, SessionID) :-
+    tramite_pendiente(UserID, SessionID, Tramite, TramiteID, Contexto),
+    retract(tramite_pendiente(UserID, SessionID, Tramite, TramiteID, Contexto)),
+    assertz(estado(
+        UserID,
+        SessionID,
+        ejecutar_tramite,
+        Contexto,
+        PasosRestantes
+    )).
+
+
+👉 El trámite:
+
+deja de estar pendiente
+
+pasa a ejecución
+
+continúa exactamente donde quedó
+
+🟦 5. Kafka llega mientras hay estado activo
+
+👉 Lo que dijiste, textual y correcto:
+
+“los tramites_en_espera se transforman en tramite_pendiente para no interrumpir sesiones activas del usuario”
+
+Implementación:
+
+handle_notificacion_kafka(N) :-
+    extract(N, UserID, SessionID, Tramite, TramiteID, Contexto),
+    assertz(tramite_pendiente(UserID, SessionID, Tramite, TramiteID, Contexto)),
+    (
+        estado(UserID,_,_,_,_) ->
+        avisar_usuario(UserID,
+            "Llegó una actualización de otro trámite. La vemos cuando quieras."
+        )
+    ;
+        true
+    ).
+
+
+✔️ No rompe nada
+✔️ No bloquea
+✔️ No interrumpe
+
+🧠 Lo más importante: el criterio de selección
+
+“Entonces la selección de un usuario se obtiene con todos estos tramite_pendiente”
+
+Correcto. Y solo se selecciona cuando:
+
+no hay estado/5
+
+o el usuario explícitamente pide cambiar
+
+Esto evita:
+❌ decisiones automáticas incorrectas
+❌ pérdida de contexto
+❌ confusión del usuario
+
+🧪 Caso extremo (bien resuelto por este modelo)
+
+Kafka despierta un trámite mientras el usuario responde una pregunta sensible
+
+✔️ El mensaje se guarda
+✔️ El usuario termina su respuesta
+✔️ Luego se le informa
+✔️ UX humana y segura
+
+🧩 Conclusión
+
+Lo que acabás de formular es:
+
+✔️ Conceptualmente correcto
+
+✔️ Implementable sin hacks
+
+✔️ Muy alineado con Prolog
+
+✔️ Escalable (timeouts, prioridades, colas)
+
+✔️ Fácil de razonar
+
+No hay que inventar más estructura.
+Solo codificar estas transiciones con cuidado.
+
+🔜 Próximo paso (te propongo uno concreto)
+
+Elegí uno y lo bajamos a código real:
+
+1️⃣ Predicados Prolog exactos para tramite_pendiente/5
+2️⃣ Adaptar tu dialogo/3 para este modelo
+3️⃣ Manejo de notificacion_tramite HTTP → Prolog
+4️⃣ UX de selección de trámite pendiente
+5️⃣ Persistencia y recuperación al reiniciar
+
+Decime cuál y seguimos sin romper nada de lo que ya funciona.
+
 {
   "URLKafka":"66.70.179.213:9092",
   "TopicoKafka":"Pedir_Datos",
@@ -837,3 +1517,648 @@ Cuando vos quieras, te propongo uno de estos:
 🧩 Soportar múltiples trámites en paralelo
 
 Decime por dónde seguimos 🚀
+
+
+-------------------------------------------------------------
+ultimo
+Excelente, gracias por compartir todo el estado real del código. Eso permite trabajar “cirugía fina”, no a nivel abstracto 👍
+Voy a estructurar la respuesta en 4 bloques claros, porque el sistema ya está grande y bien pensado.
+
+1️⃣ Diagnóstico rápido (estás muy bien encaminado)
+
+Antes de proponer cambios, lo importante:
+
+✅ Arquitectura general: correcta
+
+Chatbot = orquestador conversacional
+
+Motor externo = ejecutor de trámites
+
+Kafka = bus de eventos
+
+Prolog = fuente de verdad del estado conversacional
+
+✅ Modelo mental correcto:
+
+Fase 1: buscar trámite (LLM)
+
+Fase 2: confirmar
+
+Fase 3: ejecutar (pasos)
+
+Trámites asincrónicos → pausa + notificación
+
+✅ Muy buen uso de estado(UserID, Fase, Contexto, Pasos)
+Esto es exactamente lo que necesita un chatbot serio.
+
+Ahora, lo importante: hay 3 problemas estructurales y 2 mejoras clave para que lo asincrónico funcione robusto.
+
+2️⃣ PROBLEMA 1 (crítico): handle_notificacion/1 no matchea el JSON real
+
+El JSON del motor (el que mostraste antes) NO tiene:
+
+In.user_id
+In.tramite_id
+In.resultado
+
+
+Tiene esto (ejemplo real):
+
+{
+  "CodigoCliente": "...",
+  "InstanciaTramite": 2606,
+  "Accion": 1,
+  "VariablesPedidas": [...],
+  "TopicoKafka": "Pedir_Datos"
+}
+
+🔧 CORRECCIÓN DIRECTA
+
+Cambiá el inicio de handle_notificacion/1 por esto:
+
+handle_notificacion(Request) :-
+    http_read_json_dict(Request, In),
+    format(user_output,"📨 notificación recibida~n",[]),
+
+    UserID    = In.'CodigoCliente',
+    TramiteID = In.'InstanciaTramite',
+    Accion    = In.'Accion',
+
+
+Y NO accedas a In.resultado.
+
+3️⃣ PROBLEMA 2: tramite_en_espera/4 se rompe por UUID vs InstanciaTramite
+
+En tramite_completado/6 hacés:
+
+uuid(TramiteID),
+assertz(tramite_en_espera(UserID,T,TramiteID,Contexto))
+
+
+Pero luego, el motor te devuelve:
+
+"InstanciaTramite": 2606
+
+
+👉 Nunca va a matchear.
+
+🔧 SOLUCIÓN CORRECTA (muy importante conceptualmente)
+
+Hay que distinguir:
+
+Concepto	Quién lo genera
+TramiteIDLocal	Chatbot
+InstanciaTramite	Motor
+✔️ Cambio mínimo recomendado
+
+Cuando exportás al motor:
+
+crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes) :-
+
+
+Agregá:
+
+'TramiteIDChatbot': TramiteID
+
+
+Y cuando vuelve la notificación:
+
+TramiteIDChatbot = In.'TramiteIDChatbot',
+retract(tramite_en_espera(UserID, Tramite, TramiteIDChatbot, Contexto))
+
+
+🔑 Nunca dependas de IDs del motor para tu estado interno
+
+4️⃣ PROBLEMA 3: la fase ejecutar_tramite no distingue origen humano vs motor
+
+Hoy asumís que toda entrada es texto humano, pero ahora hay dos fuentes:
+
+Fuente	Entrada
+Usuario	texto
+Motor	VariablesPedidas
+🔧 Mejora conceptual (muy simple)
+
+Introducí una subfase explícita:
+
+% estado(UserID, Fase, Contexto, Pasos).
+% Fase ∈ buscar_tramite | confirmar_tramite | ejecutar_tramite | esperando_motor
+
+
+Cuando enviás a Kafka (asincrónico):
+
+assertz(estado(UserID, esperando_motor, Contexto, []))
+
+
+Y no permitís dialogo normal en esa fase:
+
+procesar_fase(UserID, esperando_motor, _, Respuesta) :-
+    Respuesta = "⏳ Tu trámite está siendo procesado. Te aviso cuando haya novedades.",
+    assertz(estado(UserID, esperando_motor, Contexto, [])).
+
+
+Cuando llega handle_notificacion/1, ahí sí:
+
+assertz(estado(UserID, ejecutar_tramite, NuevoContexto, Pasos))
+
+5️⃣ MEJORA CLAVE 1: convertir VariablesPedidas en pasos correctamente
+
+Esto lo tenés casi perfecto 👏
+Solo recomiendo normalizar tipos:
+
+variable_a_paso3(PDict, paso(Codigo, Label, Tipo, [])) :-
+    atom_string(Codigo, PDict.'Codigo'),
+    Label = PDict.'Label',
+    clase_a_tipo(PDict.'Clase', Tipo).
+
+clase_a_tipo(1, "numero").
+clase_a_tipo(3, "fecha").
+clase_a_tipo(4, "texto").
+clase_a_tipo(6, "booleano").
+clase_a_tipo(_, "texto").
+
+
+Así el flujo del motor y el flujo local usan el mismo contrato.
+
+6️⃣ MEJORA CLAVE 2: enviar_mensaje_usuario/2 está perfecto (solo un detalle)
+
+Está muy bien 👍
+Solo agregaría timeout y log:
+
+enviar_mensaje_usuario(UserID, Texto) :-
+    PrologURL = 'http://localhost:8070/enviar_mensaje',
+    catch(
+        http_post(
+            PrologURL,
+            json(_{ user_id: UserID, texto: Texto }),
+            _,
+            [ request_header('Content-Type'='application/json'),
+              timeout(5)
+            ]
+        ),
+        E,
+        format(user_output,"❌ Error enviando mensaje a usuario ~w: ~w~n",[UserID,E])
+    ).
+
+7️⃣ Conclusión (importante)
+
+Lo que tenés ahora ya es un motor conversacional serio, no un prototipo.
+
+✔️ separación clara de responsabilidades
+✔️ soporte sincrónico y asincrónico
+✔️ LLM solo para lo que sirve (lenguaje)
+✔️ Prolog como máquina de estados (perfecto)
+
+El próximo paso natural (si querés)
+
+Te propongo elegir uno:
+
+🔁 Soportar múltiples trámites en paralelo por usuario
+
+💾 Persistir estado en SQLite en lugar de .pl
+
+🧠 Afinar el prompt de detección de trámite
+
+🧪 Script de pruebas end-to-end (sin WhatsApp)
+
+📜 Diagrama de estados formal del chatbot
+
+Decime cuál y seguimos con código concreto, como hasta ahora 💪
+
+me gustaria intentar el 1 "Soportar múltiples tramites en paralelo por usuario
+
+Excelente elección 👍
+Soportar múltiples trámites en paralelo por usuario es el paso que convierte tu chatbot en un orquestador real, no secuencial.
+
+Voy a hacerlo muy concreto y paso a paso, respetando tu código actual y tu forma de pensar en Prolog.
+
+🧠 Idea central (clave)
+
+Hoy tu modelo implícito es:
+
+estado(UserID, Fase, Contexto, Pasos).
+
+
+👉 Eso fuerza 1 solo trámite activo por usuario.
+
+La solución correcta es introducir un identificador de conversación/trámite, y hacer que todo el estado lo incluya.
+
+1️⃣ Nuevo concepto: SesionID (o ConversacionID)
+
+No confundamos:
+
+ID	Significado
+UserID	Persona (WhatsApp)
+SesionID	Un trámite concreto en curso
+TramiteIDChatbot	Instancia interna del trámite
+InstanciaTramite	ID del motor externo
+
+👉 Un usuario puede tener varias sesiones activas.
+
+2️⃣ Nuevo modelo de estado (mínimo cambio)
+🔴 Antes
+estado(UserID, Fase, Contexto, Pasos).
+dato_tramite(UserID, Tramite, Campo, Valor).
+tramite_en_espera(UserID, Tramite, TramiteID, Contexto).
+
+🟢 Después (clave del cambio)
+estado(UserID, SesionID, Fase, Contexto, Pasos).
+dato_tramite(UserID, SesionID, Tramite, Campo, Valor).
+tramite_en_espera(UserID, SesionID, Tramite, TramiteIDChatbot, Contexto).
+
+
+📌 Todo lo que antes colgaba solo del UserID ahora cuelga de (UserID, SesionID)
+
+3️⃣ Crear una nueva sesión cuando se detecta un trámite
+
+En tu fase “buscar trámite” (LLM), cuando el usuario confirma:
+
+nueva_sesion(UserID, SesionID) :-
+    uuid(SesionID).
+
+
+Y al iniciar:
+
+nueva_sesion(UserID, SesionID),
+assertz(estado(
+    UserID,
+    SesionID,
+    ejecutar_tramite,
+    contexto{ tramite: Tramite },
+    Pasos
+)).
+
+
+💡 El SesionID es invisible al usuario, pero fundamental internamente.
+
+4️⃣ ¿Cómo sabe el usuario a qué trámite responde?
+
+Esto es el punto fino 👇
+Tenés 3 estrategias, de menos a más sofisticada.
+
+✅ Opción A (simple y efectiva): “trámite activo por defecto”
+
+Regla:
+
+Si el usuario responde sin aclarar, se aplica al último trámite activo.
+
+Implementación:
+
+sesion_activa(UserID, SesionID) :-
+    estado(UserID, SesionID, ejecutar_tramite, _, _),
+    !.
+
+
+En dialogo/3:
+
+dialogo(UserID, Texto, Respuesta) :-
+    sesion_activa(UserID, SesionID),
+    dialogo_sesion(UserID, SesionID, Texto, Respuesta).
+
+
+🟢 Es suficiente para el 80% de los casos reales.
+
+🟡 Opción B (recomendada): selector implícito
+
+Si el usuario escribe algo como:
+
+“sigamos con el de certificado”
+
+Usás LLM solo para mapear texto → SesionID:
+
+resolver_sesion_por_texto(UserID, Texto, SesionID).
+
+
+Prompt típico:
+
+“Dado este texto y estos trámites activos, ¿a cuál se refiere?”
+
+🔵 Opción C (explícita): mostrar menú
+
+Si hay más de una sesión activa y no se puede inferir:
+
+listar_sesiones(UserID, Respuesta) :-
+    findall(
+        SesionID-Tramite,
+        estado(UserID, SesionID, _, contexto{tramite:Tramite}, _),
+        L
+    ),
+    construir_menu(L, Respuesta).
+
+
+Respuesta al usuario:
+
+Tenés varios trámites en curso:
+1️⃣ Certificado de deuda
+2️⃣ Renovación DNI
+
+¿Con cuál querés seguir?
+
+5️⃣ Kafka + asincrónico con múltiples trámites
+Antes (incorrecto a futuro)
+tramite_en_espera(UserID, Tramite, TramiteID, Contexto).
+
+Después (correcto)
+tramite_en_espera(
+    UserID,
+    SesionID,
+    Tramite,
+    TramiteIDChatbot,
+    Contexto
+).
+
+
+Cuando llega la notificación:
+
+handle_notificacion(Request) :-
+    http_read_json_dict(Request, In),
+    UserID   = In.'CodigoCliente',
+    TramiteIDChatbot = In.'TramiteIDChatbot',
+
+    retract(tramite_en_espera(
+        UserID,
+        SesionID,
+        Tramite,
+        TramiteIDChatbot,
+        Contexto
+    )),
+
+    continuar_tramite(UserID, SesionID, In).
+
+
+🎯 No hay ambigüedad posible, aunque el usuario tenga 5 trámites activos.
+
+6️⃣ Pequeña mejora UX (muy importante)
+
+Cuando iniciás un nuevo trámite:
+
+Respuesta = "🆕 Inicié el trámite *Certificado de Deuda*. Podés seguir con este o con otros que tengas en curso."
+
+
+Y cuando vuelve uno asincrónico:
+
+enviar_mensaje_usuario(
+    UserID,
+    "🔔 Hay novedades sobre *Certificado de Deuda*. ¿Querés continuar ahora?"
+).
+
+
+Esto hace que el paralelismo no confunda.
+
+7️⃣ Resumen corto (para tenerlo claro)
+
+✔️ Introducir SesionID
+✔️ Todo estado → (UserID, SesionID)
+✔️ Kafka devuelve TramiteIDChatbot
+✔️ Resolver sesión:
+
+por defecto
+
+por inferencia
+
+por menú
+
+🚀 Próximo paso sugerido (natural)
+
+El siguiente paso lógico es uno de estos:
+
+📜 Predicado dialogo_sesion/4 separado
+
+🧪 Simulador de múltiples trámites asincrónicos
+
+💾 Persistencia en SQLite por (UserID, SesionID)
+
+🧠 Prompt LLM para elegir sesión automáticamente
+
+Decime cuál querés implementar primero, y lo escribimos con código real, integrado a tu base actual.
+
+
+Excelente, gracias por compartir todo el código completo 🙌
+Eso permite hacer lo que pedís: decirte exactamente qué tocar, dónde y en qué orden, sin reescribir todo ni romper lo que ya funciona.
+
+Voy a estructurar la respuesta así:
+
+🔴 Problema actual (concreto, en tu código)
+
+🟢 Modelo nuevo con SessionID (mínimo cambio)
+
+✏️ Cambios archivo por archivo (con snippets)
+
+🤖 Reconocimiento de sesión con LLM + fallback a listado
+
+🧪 Cómo probar sin Kafka real (simulación)
+
+📍 Checklist final
+
+1️⃣ El problema actual (muy concreto)
+
+Hoy todo tu estado está indexado solo por UserID:
+
+estado(UserID, Fase, Contexto, Pasos).
+dato_tramite(UserID, Tramite, Campo, Valor).
+tramite_en_espera(UserID, Tramite, TramiteID, Contexto).
+
+
+👉 Esto impide:
+
+más de un trámite activo por usuario
+
+retomar correctamente cuando Kafka notifica
+
+que el LLM elija “a cuál trámite” se refiere el usuario
+
+2️⃣ Modelo nuevo (mínimo cambio real)
+
+No tocamos la arquitectura, solo agregamos SessionID.
+
+🔵 Nuevo contrato de estado
+estado(UserID, SessionID, Fase, Contexto, Pasos).
+dato_tramite(UserID, SessionID, Tramite, Campo, Valor).
+tramite_en_espera(UserID, SessionID, Tramite, TramiteID, Contexto).
+
+
+📌 SessionID es:
+
+uuid/1
+
+interno
+
+invisible para el usuario
+
+clave para Kafka
+
+3️⃣ Cambios archivo por archivo
+🧠 A) chatbot.pl (principal)
+🔧 3.1 Declaraciones dinámicas
+
+Reemplazá:
+
+:- dynamic estado/4.
+
+
+por:
+
+:- dynamic estado/5.
+
+
+Y agregá:
+
+:- dynamic sesion_activa/2. % sesion_activa(UserID, SessionID)
+
+🔧 3.2 Inicialización de sesión (fallback)
+
+En este bloque:
+
+dialogo(UserID, Line, Respuesta) :-
+    Fase = buscar_tramite,
+    Contexto = _{historia: [...]},
+    assertz(estado(UserID, Fase, Contexto, [])),
+    dialogo(UserID, Line, Respuesta).
+
+
+➡️ Reemplazar por:
+
+dialogo(UserID, Line, Respuesta) :-
+    uuid(SessionID),
+    Contexto = _{historia:[system-"Eres un asistente para trámites"]},
+    assertz(estado(UserID, SessionID, buscar_tramite, Contexto, [])),
+    assertz(sesion_activa(UserID, SessionID)),
+    dialogo(UserID, SessionID, Line, Respuesta).
+
+🔧 3.3 Nuevo dialogo/4
+
+Agregá:
+
+dialogo(UserID, SessionID, Line, Respuesta) :-
+    estado(UserID, SessionID, Fase, _, _),
+    procesar_fase(UserID, SessionID, Fase, Line, Respuesta),
+    guardar_estado_usuarios.
+
+
+Y dejá dialogo/3 solo como resolver sesión.
+
+🔧 3.4 Resolver sesión antes de procesar
+
+Nuevo dialogo/3:
+
+dialogo(UserID, Line, Respuesta) :-
+    sesiones_activas(UserID, Sesiones),
+    (   Sesiones = [SessionID]
+    ->  dialogo(UserID, SessionID, Line, Respuesta)
+    ;   elegir_sesion_llm(UserID, Line, Sesiones, SessionID)
+    ->  retractall(sesion_activa(UserID,_)),
+        assertz(sesion_activa(UserID,SessionID)),
+        dialogo(UserID, SessionID, Line, Respuesta)
+    ;   listar_sesiones(UserID, Respuesta)
+    ).
+
+🔧 3.5 Listar sesiones (fallback humano)
+sesiones_activas(UserID, Sesiones) :-
+    findall(SessionID-Tramite,
+        estado(UserID, SessionID, _, Ctx, _),
+        Sesiones).
+
+listar_sesiones(UserID, Respuesta) :-
+    sesiones_activas(UserID, Sesiones),
+    maplist(format_sesion, Sesiones, Lineas),
+    atomic_list_concat(Lineas, "\n", Texto),
+    format(string(Respuesta),
+        "Tenés varios trámites en curso:\n~s\n¿Con cuál querés seguir?",
+        [Texto]).
+
+format_sesion(SessionID-Tramite, Linea) :-
+    format(string(Linea), "• ~w", [Tramite]).
+
+4️⃣ 🤖 Reconocer sesión con LLM (tu pedido central)
+🔧 Nuevo predicado
+elegir_sesion_llm(UserID, Texto, Sesiones, SessionID) :-
+    findall(
+        _{session:S, tramite:T},
+        member(S-T, Sesiones),
+        Lista
+    ),
+    format(string(Prompt),
+"El usuario dijo: «~s»
+Tiene estos trámites activos:
+~w
+¿A cuál se refiere?
+Respondé SOLO JSON:
+{ \"session\": \"id\" o null }",
+    [Texto, Lista]),
+    call_llm_with_context([user-Prompt], R),
+    atom_json_dict(R, D, []),
+    SessionID = D.session,
+    nonvar(SessionID).
+
+
+📌 Esto no bloquea: si falla → menú humano.
+
+5️⃣ Kafka: cambio mínimo pero crucial
+🔴 Antes
+tramite_en_espera(UserID, Tramite, TramiteID, Contexto)
+
+🟢 Después
+tramite_en_espera(UserID, SessionID, Tramite, TramiteID, Contexto)
+
+
+En tramite_completado/…:
+
+assertz(tramite_en_espera(UserID, SessionID, T, TramiteID, Contexto))
+
+
+En handle_notificacion/1:
+
+retract(tramite_en_espera(
+    UserID,
+    SessionID,
+    Tramite,
+    TramiteID,
+    Contexto
+)),
+assertz(estado(
+    UserID,
+    SessionID,
+    ejecutar_tramite,
+    Contexto,
+    Pasos
+)).
+
+
+🎯 Kafka queda 100% determinístico, incluso con múltiples trámites.
+
+6️⃣ 🧪 Probar SIN Kafka real (te prometí esto)
+
+Creamos un simulador:
+
+simular_respuesta_asincronica(UserID, SessionID, Tramite) :-
+    sleep(2),
+    handle_notificacion(_{
+        user_id:UserID,
+        tramite_id:"SIMULADO",
+        resultado:_{Accion:4}
+    }).
+
+
+Podés probar:
+
+dos trámites
+
+uno vuelve antes
+
+el otro después
+
+7️⃣ Checklist final
+
+✔️ SessionID agregado
+✔️ Estado aislado por sesión
+✔️ LLM elige sesión si puede
+✔️ Fallback humano claro
+✔️ Kafka determinístico
+✔️ Compatible con WhatsApp
+
+🚀 Próximo paso (te lo recomiendo fuerte)
+
+👉 Persistir sesiones en SQLite
+👉 Mostrar “¿querés pausar este trámite?”
+👉 Timeout de sesión inactiva
+
+Decime cuál querés y lo implementamos con código real, como hicimos acá.

@@ -1,5 +1,5 @@
 digraph chat_assistant {
-    rankdir=LR; // Dirección de izquierda a derecha
+    rankdir=TB; // Dirección de izquierda a derecha
     node [shape=box, style=filled];
     
     // Fases existentes

@@ -1,0 +1,11 @@
+digraph chatbot_modules {
+    rankdir=LR;
+    node [shape=box, style=filled, color=lightblue];
+
+    chatbot -> gramatica;
+    chatbot -> tramite_json;
+    chatbot -> persistencia;
+    tramite_json ->  persistencia;
+    gramatica  -> tramite_json;
+}
+

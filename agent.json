@@ -1,0 +1,37 @@
+{
+    "agent_id": "chita-chatbot-tramites-ar",
+    "name": "Asistente de Trámites",
+    "description": "Agente conversacional que guía trámites administrativos paso a paso, mantiene estado y permite pausar y reanudar trámites.",
+    "protocol": "a2a",
+    "version": "1.0.0",
+    "language": "es",
+    "stateful": true,
+    "session_key": "user_id",
+    "capabilities": [
+	"buscar_tramite",
+	"iniciar_tramite",
+	"confirmar_tramite",
+	"ejecutar_tramite",
+	"pausar_tramite",
+	"reanudar_tramite",
+	"cancelar_tramite"
+    ],
+    "endpoints": {
+	"chat": {
+	    "method": "POST",
+	    "path": "/chat",
+	    "input_schema": {
+		"message": {
+		    "user_id": "string",
+		    "text": "string"
+		}
+	    },
+	    "output_schema": {
+		"respuesta": "string"
+	    }
+	}
+    },
+    "auth": {
+	"type": "none"
+    }
+}

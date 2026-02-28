@@ -3,6 +3,7 @@
     "CodigoInterno": 5,
     "Identificacion": "aa aaaa",
     "asincronico":false,
+    "loginNecesario":0,
     "Variables":
     [
 	{

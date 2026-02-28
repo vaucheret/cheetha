@@ -3,6 +3,7 @@
   "CodigoInterno": "122122222", 
     "Identificacion": "Juan Perez - Los Andes 25",
     "asincronico":false,
+    "loginNecesario":0,
   "Variables":  
      [
       {

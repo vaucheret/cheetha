@@ -6,8 +6,8 @@ import requests
 
 app = Flask(__name__)
 
-KAFKA_SERVER = "localhost:9092"
-#KAFKA_SERVER = '66.70.179.213:9092'
+#KAFKA_SERVER = "localhost:9092"
+KAFKA_SERVER = '66.70.179.213:9092'
 PROLOG_URL = "http://localhost:8000/notificacion_tramite"
 
 # Enviar a Kafka

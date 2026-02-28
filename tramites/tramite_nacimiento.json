@@ -3,6 +3,7 @@
     "CodigoInterno": "999122222", 
     "Identificacion": "Juan Saborido - Los Andes 25",
     "asincronico":false,
+    "loginNecesario":0,
     "Variables":
     [
 	{

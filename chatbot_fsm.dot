@@ -1,0 +1,101 @@
+digraph ChatbotFSM {
+    rankdir=TB;
+    fontsize=12;
+    labelloc="t";
+    label="FSM del Chatbot con resolución de intención y trámites pendientes";
+
+    node [shape=ellipse, style=filled, fillcolor=lightgray];
+
+    /* Estados principales */
+    SIN_ESTADO [label="Sin estado activo\n(trámites pendientes posibles)", fillcolor=lightyellow];
+
+    RESOLVER_INTENCION [
+        label="Resolver intención\n(LLM + contexto)\n- continuar pendiente\n- iniciar nuevo\n- pedir aclaración"
+        fillcolor=lightblue
+    ];
+
+    CONFIRMAR_NUEVO [label="Confirmar trámite nuevo"];
+    CONFIRMAR_CONTINUAR [label="Confirmar continuar\ntrámite pendiente"];
+
+    EJECUTAR_TRAMITE [
+        label="Ejecutar trámite\n(recolección de datos)"
+        fillcolor=lightblue
+    ];
+
+    /* Estados lógicos */
+    TRAMITE_PENDIENTE [
+        label="Trámite pendiente\n(en espera)"
+        shape=box
+        fillcolor=lightpink
+    ];
+
+    TRAMITE_ASINCRONICO [
+        label="Motor externo\n(Kafka)"
+        shape=box
+        fillcolor=lightblue
+    ];
+
+    FIN [label="Fin de trámite", shape=doublecircle, fillcolor=lightgreen];
+
+    /* Flujo inicial */
+    SIN_ESTADO -> RESOLVER_INTENCION
+        [label="Usuario escribe"];
+
+    /* Decisiones LLM */
+    RESOLVER_INTENCION -> CONFIRMAR_CONTINUAR
+        [label="LLM propone\ncontinuar pendiente"];
+
+    RESOLVER_INTENCION -> CONFIRMAR_NUEVO
+        [label="LLM propone\nnuevo trámite"];
+
+    RESOLVER_INTENCION -> RESOLVER_INTENCION
+        [label="No está claro\n(seguir preguntando)"];
+
+    /* Confirmaciones */
+    CONFIRMAR_CONTINUAR -> EJECUTAR_TRAMITE
+        [label="Usuario confirma"];
+
+    CONFIRMAR_CONTINUAR -> RESOLVER_INTENCION
+        [label="Usuario niega"];
+
+    CONFIRMAR_NUEVO -> EJECUTAR_TRAMITE
+        [label="Usuario confirma"];
+
+    CONFIRMAR_NUEVO -> RESOLVER_INTENCION
+        [label="Usuario corrige"];
+
+	/* Ejecución */
+
+    EJECUTAR_TRAMITE -> EJECUTAR_TRAMITE
+        [label="Preguntar Variables"];
+
+	
+    EJECUTAR_TRAMITE -> FIN
+        [label="Trámite sincrónico completo"];
+
+    EJECUTAR_TRAMITE -> TRAMITE_ASINCRONICO
+        [label="Envía a Kafka"];
+
+    EJECUTAR_TRAMITE -> TRAMITE_PENDIENTE
+        [label="Usuario pausa"];
+
+    /* Kafka */
+    TRAMITE_ASINCRONICO -> TRAMITE_PENDIENTE
+        [label="Kafka variables pendientes y se esta en otro dialogo"];
+
+    /* Kafka */
+    TRAMITE_ASINCRONICO -> EJECUTAR_TRAMITE
+        [label="Kafka variables pendientes y continua tramite"];
+
+	
+    /* Kafka */
+    TRAMITE_ASINCRONICO -> FIN
+        [ label="Kafka notifica finalizacion"];
+
+	
+    TRAMITE_PENDIENTE -> RESOLVER_INTENCION
+        [ label="lista de tramites pendientes"];
+	
+    FIN -> SIN_ESTADO
+        [ label="Usuario queda libre"];
+}
