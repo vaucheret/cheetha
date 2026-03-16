@@ -21,8 +21,12 @@
     dato_tramite/4,
     assert_dato_tramite/4,
     retract_dato_tramite/4,
-    retractall_dato_tramite/4
+    retractall_dato_tramite/4,
 
+    usuario_identificado/3,
+    assert_usuario_identificado/3,
+    retract_usuario_identificado/3
+    
 ]).
 
 :- use_module(library(persistency)).
@@ -59,6 +63,12 @@
 	tramite:atom,
 	clave:atom,
 	valor:string
+    ),
+
+    usuario_identificado(
+	user_id:string,
+	token:string,
+	fecha_expiracion:timestamp
     ).
 
 % --------------------------------------------------

@@ -1,0 +1,38 @@
+ LLM + FSM ( large language models embeddings into Finite State Machines)
+
+
+
+En este esquema, la Máquina de Estados Finitos (FSM) actúa como el
+ "esqueleto" que garantiza el control y la predictibilidad, mientras
+ que la IA dentro de cada estado aporta la "inteligencia" y
+ adaptabilidad necesaria para resolver tareas específicas.
+
+Cómo funciona esta combinación
+
+En lugar de tener estados con lógica rígida , cada estado invoca un
+modelo o agente de IA especializado en esa tarea concreta:
+
+La FSM como Orquestador: Define el flujo de alto nivel y las reglas
+críticas de seguridad o negocio. Decide cuándo pasar de un estado a
+otro.
+
+IA Específica por Estado: Dentro de un estado, se ejecuta una IA que
+toma decisiones granulares basadas en el contexto actual.
+
+
+Ventajas de este enfoque
+
+ - Predictibilidad y Control: La FSM evita que la IA tome caminos
+   "alucinatorios" o peligrosos, ya que las transiciones están
+   predefinidas por reglas humanas.
+ 
+ - Modularidad: Puedes actualizar el modelo de IA de un estado (por
+   ejemplo, cambiar un modelo de visión por uno más nuevo) sin alterar
+   el resto de la lógica del sistema.
+ 
+ - Eficiencia: No necesitas una "IA gigante" para todo; puedes usar
+   modelos pequeños y rápidos (SLM) optimizados para la tarea específica
+   de cada estado.
+
+ - Depuración: Es más fácil rastrear fallos porque sabes exactamente
+   en qué estado se encontraba el sistema cuando la IA cometió un error.

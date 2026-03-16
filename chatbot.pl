@@ -8,6 +8,7 @@
 :- use_module(tramite_json).
 :- use_module(gramatica).
 :- use_module(persistencia).
+:- use_module(readenv, [load_dot_env/1]).
 :- use_module(library(http/json)).
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(listing), [portray_clause/2]).
@@ -37,6 +38,7 @@ set_provider(Provider) :-   % openai , deepseek , gemini or groq
 
 start_server(Provider,Port) :-
     set_provider(Provider),
+    load_dot_env('.env'),
 %    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
@@ -46,6 +48,7 @@ start_server(Provider,Port) :-
 
 iniciar_chat(Provider) :-
     set_provider(Provider),
+    load_dot_env('.env'),
 %    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
@@ -61,6 +64,7 @@ iniciar_chat(Provider) :-
 
 :- http_handler(root(chat), handle_chat, [method(post)]).
 :- http_handler(root(notificacion_tramite), handle_notificacion, [method(post)]).
+:- http_handler(root(identificacion_usuario), handle_identificacion, [method(post)]).
 :- http_handler('/.well-known/agent.json', handle_agent_card, []).
 
 handle_agent_card(_Request) :-
@@ -101,6 +105,24 @@ handle_agent_card(_Request) :-
     }, [encoding(utf8)]).
 
 
+
+handle_identificacion(Request) :-
+    http_read_json_dict(Request, In),
+    %%%%%%% log %%%%%%%%
+    format(user_output,"entro identifiacion ~n",[]),
+    %%%%%%% log %%%%%%%%
+    format(user_output,"datos de identificacion recibidos ~w~n",[In]),
+		UserID = In.identificacion,
+		IdentificacionValida = In.verificado,
+		(   IdentificacionValida == true
+		->  assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
+		    retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
+		    informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _),
+		    ejecutar_tramite(UserID,Tramite,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Tramite, Mensaje),
+		    enviar_mensaje_usuario(UserID, Mensaje),
+		    reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
+		;   reply_json_dict(_{ status: "error", message: "Identificación fallida" }, [encoding(utf8)])
+		).
 
 
 handle_notificacion(Request) :-
@@ -146,7 +168,7 @@ handle_notificacion(Request) :-
 		).
 
 enviar_mensaje_usuario(UserID, Texto) :-
-    PrologURL = 'http://localhost:8070/enviar_mensaje',
+    getenv('PrologURL',PrologURL),
     catch(
         http_post(
             PrologURL,
@@ -314,15 +336,13 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	    
 	    Respuesta = D.respuesta ,
 	    append(Hist1, [assistant-D.respuesta], HistFinal),	  
-			  assert_estado(UserID, buscar_tramite,
-					_{historia:HistFinal}, [])
+			  assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
   			  ;
 			  D.accion == "error"
 			    ->
 				Respuesta = D.respuesta ,
 	  		        HistFinal = [assistant-Respuesta],
-			  assert_estado(UserID, buscar_tramite,
-					_{historia:HistFinal}, [])
+			  assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
     ).
 
 
@@ -337,28 +357,36 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
     resolver_intencion_pos_neg(Hist1, D),
     (	D.intent == "confirmar_si"
 	  ->
-	      informacion_tramite(T, Contexto.tramite, Asincronico,_Auth, _),
+	      informacion_tramite(T, Contexto.tramite, Asincronico,Auth, _),
 	      uuid(TramiteID),
 	      flujo_tramite(T, P ),
-	      (   P = [Paso|Pasos]
-	      ->   
-              generar_pregunta_chatgpt(T, Paso, Pregunta),
-              format(string(Respuesta),
-		     "Perfecto, iniciemos el trámite «~w». ~s", [T, Pregunta]),
-              assert_estado(UserID, ejecutar_tramite,
-			    Contexto.put(topic,"tramites").put(tramiteid,TramiteID), [Paso|Pasos])
+	      (
+		  identificado(Auth,UserID)
+
+	      -> 
+		  ejecutar_tramite(UserID,T,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),
+									   Asincronico,P,"Perfecto, iniciemos el trámite «~w». ~s",T, Respuesta)
 	      ;
-	      tramite_completado(UserID,T,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,Respuesta)
+	      %% log %%%%%%% log %%%%%%%%
+	      format(user_output,"usuario no identificado, se solicita identificacion para continuar ~w~n",[UserID]),
+	      %% log %%%%%%% log %%%%%%%%
+	      solicitar_identificacion(UserID,Resp),
+	      %% log %%%%%%% log %%%%%%%%
+	      format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
+	      %% log %%%%%%% log %%%%%%%%
+	      	      format(string(Respuesta),"Por favor identifícate para continuar: ~s",[Resp.presentationContent]),
+	     % Respuesta = "didcomm://?_oob=eyJ0eXBlIjoiaHR0cHM6Ly9kaWRjb21tLm9yZy9vdXQtb2YtYmFuZC8yLjAvaW52aXRhdGlvbiIsImlkIjoiZTc1ZDJmZDYtNjRlZS00NDIxLWIyNjMtNzIzNjVkYWVlYjhmIiwiZnJvbSI6ImRpZDpxdWFya2lkOkVpQ1gxZ2VIOEdSTUNzQUs4UUxnTHU4TjNDc0E3M2JhSHhlMEhJRDlhLXYybXciLCJib2R5Ijp7ImdvYWxfY29kZSI6InN0cmVhbWxpbmVkLXZwIiwiYWNjZXB0IjpbImRpZGNvbW0vdjIiXX19",
+              assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
 	      )
-	  ;
-	  
-	  D.intent == "confirmar_no"
-	    ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
+	      
+  ;
+       D.intent == "confirmar_no"
+	 ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
 		append(Contexto.historia, [user-Line], NuevaHistNo),
 		append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
 		assert_estado(UserID, buscar_tramite,
 			      _{historia:HistFinal}, [])
-	    ;   Respuesta = "Perdón, ¿podés responder sí o no?",
+	 ;   Respuesta = "Perdón, ¿podés responder sí o no?",
 		assert_estado(UserID, confirmar_tramite, Contexto, [])
     ).
 
@@ -373,16 +401,9 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
     (	D.intent == "confirmar_si"
 	  ->
               informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_),
-	      (   P = [Paso|Pasos]
-	      ->   
-              generar_pregunta_chatgpt(T, Paso, Pregunta),
-              format(string(Respuesta),
-		     "Perfecto, continuamos con  el trámite «~w». ~s", [T, Pregunta]),
-              assert_estado(UserID, ejecutar_tramite,
-			    Contexto, [Paso|Pasos])
-	      ;
-	      tramite_completado(UserID,T,Contexto,Asincronico,Respuesta)
-	      )
+	      ejecutar_tramite(UserID,T,Contexto,Asincronico,P,
+			     "Perfecto, continuamos con el trámite «~w». ~s",
+			     T, Respuesta)
     ;   D.intent == "confirmar_no"
 	  ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
 	      append(Contexto.historia, [user-Line], NuevaHistNo),
@@ -394,6 +415,9 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
               assert_estado(UserID, confirmar_tramite, Contexto, [])
     ).
 
+% ——————————————————————————————————————
+% FASE 3 : EJECUTAR TRAMITE
+% ——————————————————————————————————————
 
 
 procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
@@ -424,29 +448,66 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     Paso = paso(Id,_,Tipo,_),
         (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
         ->  assert_dato_tramite(UserID,T,Id,Line1),
-            (   Restantes = [Prox|_]
-            ->  generar_pregunta_chatgpt(T,Prox,Respuesta),
-                assert_estado(UserID, ejecutar_tramite,
-                               Contexto, Restantes)
-            ;
-	    tramite_completado(UserID,T,Contexto,Asincronico,Respuesta)
-            )
+	    ejecutar_tramite(UserID,T,Contexto,Asincronico,Restantes,
+			     "~w~s",'',Respuesta)
         ;   % Respuesta inválida → repreguntar
             generar_repregunta_chatgpt(T,Paso,Respuesta),
             assert_estado(UserID, ejecutar_tramite,
                            Contexto, [Paso|Restantes])
     ).
 
+
+% ———————————————————————————————————————————————————————
+% Predicados auxiliares de procesamiento de fases
+% ———————————————————————————————————————————————————————
+
+identificado(0,_) :- !. % no requiere identificación
+identificado(D,UserID) :-
+    D \= 0,
+    usuario_identificado(UserID,_,Fecha_Expiracion),
+    get_time(TimestampActual),
+    TimestampActual < Fecha_Expiracion. % la identificación es válida si no ha expirado
+
+solicitar_identificacion(UserID,Dict) :-
+    getenv('WebhookURL',WebhookURL),
+    format(string(URL), "https://thinknetc3.ddns.net/chita/apihook/api/webhooks/ObtenerDeepLink?Identificacion=~w&URLWebHook=~w", [UserID,WebhookURL]),
+    catch(
+	http_get(
+	    URL,
+	    Resp,
+	    [ request_header('Content-Type'='application/json')
+	    ]
+	),
+	E
+	%%%%%%% log %%%%%%%%
+	,format(user_output,"❌ Error solicitando identificación para usuario ~w: ~w~n",[UserID,E])
+	 %%%%%%% log %%%%%%%%
+    ),
+    atom_json_term(String,Resp,[as(string)]),
+    atom_json_dict(String, Dict, []),
+    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
+
+
+ejecutar_tramite(UserID,T,Contexto,Asincronico,Pasos,Caption,Tram,Respuesta) :-
+    ( Pasos = [Prox|_]
+    ->  generar_pregunta_chatgpt(T,Prox,Pregunta),
+	format(string(Respuesta),Caption,[Tram, Pregunta]),
+	assert_estado(UserID, ejecutar_tramite,Contexto,Pasos)
+    ;
+    tramite_completado(UserID,T,Contexto,Asincronico,Respuesta)
+    ).
+
 tramite_completado(UserID,T,Contexto,Asincronico,Respuesta) :-
 	        guardar_preguntas_cache,
 	        TramiteID = Contexto.tramiteid,
+	        (   usuario_identificado(UserID,Token, _) -> true ; Token = "" ),
 		(   Asincronico == true
 		->
-		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesAsincronicos"),
+		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesAsincronicos",Token),
 		MensajeKafka = "Tu trámite se está procesando,  te avisaremos cuando esté listo.",
 		assert_tramite_en_espera(UserID,T,TramiteID,Contexto)
 		;
-		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesResultados"),
+		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesResultados",Token),
                 esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka)
 		),
                 format(string(Respuesta),
@@ -515,9 +576,32 @@ Decidí UNA sola opción de accion y respondé SOLO en JSON:
 %    append(Historia, [user-Prompt], H2),
     %    H2 = [user-Prompt],
     H2 = [system-Prompt|Historia],
-    catch((call_llm_with_context(H2, R),atom_json_dict(R, Decision, [])),
-          _, Decision = _{accion:"error",tramite_id:null, respuesta:"¿Podrías aclarar qué trámite te interesa?"}).
+    (
+	call_llm_with_context(H2, R) ->
+	(
+	    is_json_valid(R) ->
+	    (   
+		atom_json_dict(R, Decision, [])
+	    ;	
+	    Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
+	    )
+	)
+	%% (
+	%%     atom_json_dict(R, Decision, []) -> true
+	%% ;
+	%% Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
+	%% )
+    ;
+    Decision = _{accion:"error",tramite_id:null, respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
 
+    ).
+
+is_json_valid(R) :-
+    catch(
+        (atom_json_dict(R, _, []), true),
+        error(syntax_error(_), _),
+        fail
+    ).
 
 resolver_intencion_pos_neg(Historia,  Decision) :-
     format(string(Prompt),
@@ -581,15 +665,51 @@ call_llm_with_context(HistMsgs, Response) :-
     provider_data(Provider,Model,EnvVarForKey,ApiUrl),
     getenv(EnvVarForKey, Key),
     build_json_dict(HistMsgs,Model,JSONDICT),
-    format(user_output,"json enviado a llm ~w~n",[JSONDICT]),
+    %%% log %%%%%%% log %%%%%%%%
+    %format(user_output,"json enviado a llm ~w~n",[JSONDICT]),
+    %%% log %%%%%%% log %%%%%%%%
     http_post(ApiUrl,
 	      json(JSONDICT),
 	      ReplyDict,
 	      [
-		  authorization(bearer(Key)),
+%		  request_header('Content-Type'='application/json'),
+		  authorization(bearer(Key))
+		  ,
+%		
 		  application/json
 	      ]),
-    extract_gpt_response(ReplyDict, Response).
+    %%% log %%%%%%% log %%%%%%%%
+    %format(user_output,"respuesta original de  llm ~w~n",[ReplyDict]),
+    %%% log %%%%%%% log %%%%%%%%
+    %% ReplyDict = json(RepyDictA),
+    %% format(user_output,"respuesta original de  llm json ~w~n",[RepyDictA.choices]),
+    %% RepyDictA.choices = [json(Dict1A)],
+    %% Dict1A.message = json(MsgA),	      
+    %% format(user_output,"response original  ~w~n",[MsgA.content]),
+    
+    atom_json_term(Atom,ReplyDict,[as(string)]),
+    atom_json_dict(Atom, Dict, []),
+
+    %%% log %%%%%%% log %%%%%%%%
+    %format(user_output,"respuesta original como dict  llm ~w~n",[Dict]),
+    %%% log %%%%%%% log %%%%%%%%
+ 
+    Dict.choices = [Dict1],
+	 Response = Dict1.message.content.
+
+    %%% log %%%%%%% log %%%%%%%%	 
+    %format(user_output,"response ~w~n",[Dict1.message.content]),
+    %%% log %%%%%%% log %%%%%%%%
+
+    	 
+%    extract_gpt_response(ReplyDict, Response),
+
+    %%% log %%%%%%% log %%%%%%%%
+    % format(user_output,"response 2 ~w~n",[Response]).
+    %%% log %%%%%%% log %%%%%%%%
+
+
+
 
 build_json_dict(Msgs,Model, _{
 		model: Model, 
@@ -602,10 +722,10 @@ to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
     atom_string(Role, SRole).
 
 
-extract_gpt_response(json(L), Content) :-
-    member(choices=[json(Choices)],L),
-    member(message=json(Message),Choices),
-    member(content=Content,Message).
+%% extract_gpt_response(json(L), Content) :-
+%%     member(choices=[json(Choices)],L),
+%%     member(message=json(Message),Choices),
+%%     member(content=Content,Message).
 
 
 % ——————————————————————————————————————

@@ -1,4 +1,106 @@
- Ventajas 
+﻿namespace APIHook.Clases
+{
+  public class CNotificacionCliente
+  {
+    public string Identificacion { get; set; } = "";
+    public DateTime ValidaHasta { get; set; } = DateTime.MaxValue;
+    public Dictionary<string, string> DatosAsociados { get; set; } = new();
+    public bool Verificado { get; set; } = false;
+  }
+}
+
+
+using ClasesDocumentos.Respuestas;
+
+namespace ClasesDocumentos.Respuestas
+{
+  public class CRespuestaVerificacion : CRespuesta
+  {
+    public string Id { get; set; } = "";
+    public string IssuerName { get; set; } = "";
+    public string PresentationId { get; set; } = "";
+    public string PresentationContent { get; set; } = "";
+    public string QRSvg { get; set; } = "";
+  }
+}
+
+% https://localhost:7211/api/webhooks/ObtenerDeepLink?Identificacion=12121212&URLWebHook=12.12.12.12%3A9999%2Fqqqq jwt
+%% public static string CrearTokenECDSA(int CodigoUsuario, string UserName, string Usuario, string Issuer,
+%%         string Audiencia, string Roles,
+%%         Dictionary<string, object> Campos, string NombreClave, byte[] ClavePrivada, out DateTime Vencimiento)
+%%     {
+
+%%       List<Claim> Valores = new List<Claim>
+%%       {
+%%         new Claim(NOMBRE_CODIGO_USUARIO, CodigoUsuario.ToString()),
+%%         new Claim(NOMBRE_USERNAME, UserName),
+%%         new Claim(NOMBRE_NOMBRE, Usuario),
+%%         new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+%%         new Claim("kid",NombreClave)
+%%       };
+
+%%       string[] RolesLocales = Roles.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+%%       foreach (var RolLocal in RolesLocales)
+%%       {
+%%         Valores.Add(new Claim(NOMBRE_ROL, RolLocal));
+%%       }
+
+%%       foreach (var Campo in Campos)
+%%       {
+%%         if (Campo.Value is DateTime Fecha)
+%%         {
+%%           Valores.Add(new Claim(Campo.Key, CRutinasGbl.CodificarFechaHora(Fecha)));
+%%         }
+%%         else
+%%         {
+%%           if (Campo.Value is bool B)
+%%           {
+%%             Valores.Add(new Claim(Campo.Key, B ? "TRUE" : "FALSE"));
+%%           }
+%%           else
+%%           {
+%%             if (Campo.Value is double R)
+%%             {
+%%               Valores.Add(new Claim(Campo.Key, CRutinasGbl.FloatVStr(R)));
+%%             }
+%%             else
+%%             {
+%%               string? Valor = Campo.Value.ToString();
+%%               if (Valor != null)
+%%               {
+%%                 Valores.Add(new Claim(Campo.Key, Valor));
+%%               }
+%%             }
+%%           }
+%%         }
+%%       }
+
+%%       var Claims = Valores.ToArray();
+
+%%       var ecdsa = ECDsa.Create();
+%%       ecdsa.ImportECPrivateKey(ClavePrivada, out _);
+
+%%       var Credenciales = new SigningCredentials(
+%%           new ECDsaSecurityKey(ecdsa) { KeyId = NombreClave },
+%%           SecurityAlgorithms.EcdsaSha256);
+
+%%       var Handler = new JwtSecurityTokenHandler();
+%%       Vencimiento = DateTime.UtcNow.AddHours(1);
+%%       var Token = Handler.CreateJwtSecurityToken(new SecurityTokenDescriptor
+%%       {
+%%         Issuer = Issuer,
+%%         Audience = Audiencia,
+%%         Subject = new ClaimsIdentity(Claims),
+%%         Expires = Vencimiento,
+%%         SigningCredentials = Credenciales
+%%       });
+
+%%       return Handler.WriteToken(Token);
+
+
+
+Ventajas 
 
 ✔ Reinicios del servidor sin perder estado
 ✔ Varios workers HTTP sin conflictos

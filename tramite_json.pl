@@ -4,7 +4,7 @@
 	      tramite_disponible/1,
 	      flujo_tramite/2,
 	      informacion_tramite/5,
-	      exportar_datos_tramite_kafka/5,
+	      exportar_datos_tramite_kafka/6,
 	      esperar_respuesta_kafka/4,
 	      tramites_disponibles/1
 	  ]).
@@ -17,7 +17,7 @@ manejar los archivos donde se definen los tramites y contiene la
 base de datos interna de los tramites, asi como los datos recolectados
 */
 
-
+:- use_module(library(json)).
 :- use_module(library(http/json)).
 :- use_module(library(apply), [maplist/3, include/3, maplist/2]).
 :- use_module(library(http/http_client), [http_post/4,http_get/3]).
@@ -74,89 +74,18 @@ cargar_tramites :-
 
 
 
-
-%% ensure_dict(+Reply, -Dict)
-%% Acepta Reply en varios formatos y devuelve Dict (un dict Prolog).
-ensure_dict(Reply, Dict) :-
-    ( is_dict(Reply) ->
-        Dict = Reply
-    ; atomic(Reply) ->
-        % texto JSON: parsearlo a dict
-        atom_json_dict(Reply, Dict, [])
-    ; compound(Reply), functor(Reply, json, 1) ->
-        % término json(...) (representación Prolog de JSON) -> convertir recursivamente
-        json_term_to_dict(Reply, Dict)
-    ; % caso inesperado
-      throw(error(type_error(json_reply, Reply), _))
-    ).
-
-%% json_term_to_dict(+JsonTerm, -Dict)
-%% Convierte json(ListaAssoc) en dict. Maneja recursivamente listas y @(true)/@(false).
-json_term_to_dict(json(AssocList), Dict) :-
-    is_list(AssocList),
-    maplist(json_assoc_to_kv, AssocList, Pairs),
-    dict_create(Dict, _, Pairs).
-
-%% json_assoc_to_kv(+AssocElement, -Key-Value)
-%% AssocElement puede presentarse como Key=Val (lo habitual). Transformamos Val.
-json_assoc_to_kv(AssocElem, Key-ValueOut) :-
-    (	AssocElem = =(Key,Val) -> true  % Key=Val
-    ; AssocElem = Key:Val -> true    % Key:Val
-    ; AssocElem =.. [Key, Val] -> true  % por si aparece como Key(Val)
-    ),
-    % convertir clave a átomo si no lo es
-    ( atom(Key) -> KeyAtom = Key ; atom_string(KeyAtom, Key) ),
-    convert_json_value(Val, ValueOut),
-    Key = KeyAtom.   % devolvemos Key-ValueOut como par, dict_create usará KeyAtom
-
-%% convert_json_value(+Raw, -Converted)
-%% Normaliza valores: @(true)/@(false) -> booleanos, json(...) -> dict, listas -> maplist.
-convert_json_value(@(TrueFalse), Out) :- !,
-    % @(true) / @(false) vienen así en algunas representaciones
-    ( TrueFalse == true -> Out = true ; ( TrueFalse == false -> Out = false ; Out = TrueFalse ) ).
-convert_json_value(json(Assoc), Out) :- !,
-    json_term_to_dict(json(Assoc), Out).
-convert_json_value(List, Out) :-
-    is_list(List), !,
-    maplist(convert_json_value, List, Out).
-convert_json_value(Value, Value) :- !.  % número, atom, string, etc.
-
-
-
 cargar_tramites_from_url2 :-
     URL = 'https://thinknetc3.ddns.net/chita/apigps/api/Tramite/ListarConParametros?Ticket=qwqw',
 		(
 				catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
 				Code == 200
 		->
-		ensure_dict(Reply, Dict),
+		atom_json_term(Atom,Reply,[as(string)]),
+		atom_json_dict(Atom, Dict, []),
 		maplist(cargar_tramite_nuevo_desde_Json2,Dict.tramites)
 		;   format("Error al descargar el archivo JSON desde la URL.~n")
 		).
     
-%% cargar_tramites_from_url :-
-%%     URL = 'https://thinknetc3.ddns.net/chita/apigps/api/Tramite/Listar?Ticket=qwqw',
-%% 		(
-%% 				catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
-%% 				Code == 200
-%% 		->
-%% 		ensure_dict(Reply, Dict),
-%% 		maplist(cargar_tramite_nuevo_desde_Json,Dict.tramites)
-%% 		%% findall(Nombre,tramite_disponible(Nombre),L),
-%% 		%% format("~n Tramites: ~n~n"),
-%% 		%% maplist([X]>>format('~a~n',[X]),L)
-%% 		;   format("Error al descargar el archivo JSON desde la URL.~n")
-		
-%% 		).
-
-%% cargar_tramites_from_one_Json :-
-%%     open('listado_de_tramites.json',read,Stream,[encoding(utf8)]),
-%%     json_read_dict(Stream, Dict),
-%%     close(Stream),
-%%     maplist(cargar_tramite_nuevo_desde_Json,Dict.tramites),
-%%     findall(Nombre,tramite_disponible(Nombre),L),
-%%     format("~n Tramites: ~n~n"),
-%%     maplist([X]>>format('~a~n',[X]),L).
 
 
 cargar_tramite_nuevo_desde_Json2(Diction) :-
@@ -179,20 +108,20 @@ variable_a_paso2(PDict,paso(Codigo, PDict.'label',Tipo,Opciones)) :-
 				  Tipo = "texto"))),
     Opciones = PDict.get('Opciones',[]).
 
-variable_a_paso3(PDict,paso(Codigo, PDict.'Label',Tipo,Opciones)) :-
-    atom_string(Codigo,PDict.'Codigo'),
-    (	PDict.'Clase' == 1 -> Tipo = "numero"
-	      ;
-	      (	  PDict.'Clase' == 3 -> Tipo = "fecha"
-			;
-			(   PDict.'Clase' == 6 -> Tipo = "booleano"
-				  ;
-				  Tipo = "texto"))),
-    Opciones = PDict.get('Opciones',[]).
+%% variable_a_paso3(PDict,paso(Codigo, PDict.'Label',Tipo,Opciones)) :-
+%%     atom_string(Codigo,PDict.'Codigo'),
+%%     (	PDict.'Clase' == 1 -> Tipo = "numero"
+%% 	      ;
+%% 	      (	  PDict.'Clase' == 3 -> Tipo = "fecha"
+%% 			;
+%% 			(   PDict.'Clase' == 6 -> Tipo = "booleano"
+%% 				  ;
+%% 				  Tipo = "texto"))),
+%%     Opciones = PDict.get('Opciones',[]).
 
 
 cargar_variables_tramite_en_espera(Variables,Pasos) :-
-		maplist(variable_a_paso3, Variables,Pasos).
+		maplist(variable_a_paso2, Variables,Pasos).
 
 
 %% cargar_tramite_nuevo_desde_Json(Dict) :-
@@ -213,8 +142,8 @@ cargar_variables_tramite_en_espera(Variables,Pasos) :-
 %%     close(Stream).
 
 
-exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Topico,TopicoRes) :-
-    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes),
+exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Topico,TopicoRes,Tokeninicio) :-
+    crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes,Tokeninicio),
     setup_call_cleanup(
         http_post('http://localhost:8090/enviar_a_kafka',
                   json(_{ topic: Topico, mensaje: Dict }),
@@ -224,11 +153,11 @@ exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Topico,TopicoRes) :-
         true
     ).
 
-crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes) :-
+crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes,Tokeninicio) :-
     flujo_tramite(Tramite,Pasos),
     maplist(completar_variable(UserID,Tramite), Pasos, ListaVariables),
     informacion_tramite(Tramite,CodigoInterno,_,_,_),
-    dict_create(Dict,_,['UsuarioChatBot':UserID, 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,'URLKafka':"66.70.179.213:9092",'TopicoKafka':TopicoRes, 'UsuarioKafka':"",'ClaveKafka':"",'Variables':ListaVariables]).
+    dict_create(Dict,_,['UsuarioChatBot':UserID, 'CodigoTramite':CodigoInterno,'TramiteID': TramiteID,'URLKafka':"66.70.179.213:9092",'TopicoKafka':TopicoRes, 'UsuarioKafka':"",'ClaveKafka':"",'TokenInicio':Tokeninicio,'Variables':ListaVariables]).
 
 completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
     retract_dato_tramite(UserID,Tramite, Id, Valor),
@@ -254,6 +183,7 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
 	catch(http_get(URL, json(Datos), [request_header('Content-Type'='application/json'),status_code(Code)]), _, fail),
         Code == 200
     ->
+    format("Respuesta recibida de Kafka: ~w~n", [json(Datos)]),
     Datos.resultado = json(Result),
 	Excepcion = Result.'Excepcion',
 		(   Excepcion \= '' ->

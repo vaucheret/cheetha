@@ -16,7 +16,7 @@ app = Flask(__name__, static_url_path="/static", static_folder="static")
 load_dotenv()
 
 # === Config ===
-PROLOG_URL = 'http://localhost:8000/chat'
+PROLOG_URL = os.getenv("CHAT_PROLOG_URL")
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN")
 ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
@@ -220,8 +220,16 @@ def enviar_mensaje():
     send_whatsapp_text(user_id, texto)
     return jsonify({"status": "ok"})
 
+@app.route("/identificacion_usuario", methods=["POST"])
+def identificacion_usuario():
+    data = request.json
+    try:
+        res = requests.post("http://localhost:8000/identificacion_usuario", json=data, timeout=10)
+        return jsonify(res.json()), res.status_code
+    except Exception as e:
+        print(f"❌ Error reenviando identificación: {e}")
+        return jsonify({"status":"error","message":"Error reenviando identificación"}), 500
 
-    
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -292,8 +300,29 @@ def webhook():
             send_whatsapp_pdf(sender_wa, pdf_link)
             time.sleep(2)
             send_whatsapp_text(sender_wa, f"📄 Te envié el documento:\n{prolog_reply}")
+        # Botón interactivo para identificación (DIDComm)
+        elif "didcomm://" in prolog_reply:
+            m = re.search(r'(didcomm://\S+)', prolog_reply)
+            if m:
+                link = m.group(1)
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "to": sender_wa,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "button",
+                        "body": {"text": "Por favor, presiona el botón para identificarte."},
+                        "action": {
+                            "buttons": [
+                                {"type": "url", "url": link, "title": "Identificarme"}
+                            ]
+                        }
+                    }
+                }
+                requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+                return jsonify({"status": "ok"}), 200
         elif contiene_link(prolog_reply):
-            send_whatsapp_text(sender_wa, prolog_reply)
+                send_whatsapp_text(sender_wa, prolog_reply)
         elif reply_mode == "text":
             send_whatsapp_text(sender_wa, prolog_reply)
         else:  # reply_mode == "audio"
