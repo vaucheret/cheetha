@@ -1,4 +1,148 @@
-﻿namespace APIHook.Clases
+﻿Perfecto. Vamos a implementar la arquitectura correcta para WhatsApp + DIDComm, que funciona sin errores de la API y mantiene el botón para el usuario.
+
+La idea es:
+
+WhatsApp Bot
+     │
+     │ botón válido
+     ▼
+Mini Web (https)
+     │
+     │ redirige automáticamente
+     ▼
+didcomm://?_oob=...
+
+Así WhatsApp solo ve HTTPS, que sí permite.
+
+1️⃣ Cambiar lo que envía Prolog
+
+Ahora Prolog devuelve:
+
+didcomm://?_oob=XXXX
+
+Vamos a transformarlo en:
+
+https://tu-servidor/identificar?oob=XXXX
+Cambiar en Prolog
+
+En:
+
+format(string(Respuesta),"Por favor identifícate para continuar: ~a",[Resp.presentationContent])
+
+reemplazar por:
+
+Resp.presentationContent = LinkDidComm,
+sub_atom(LinkDidComm, _, _, _, "_oob="),
+sub_atom(LinkDidComm, Before, _, _, "_oob="),
+Start is Before + 5,
+sub_atom(LinkDidComm, Start, _, 0, OOB),
+
+format(string(Respuesta),
+"Por favor identifícate para continuar: https://thinknetc3.ddns.net/identificar?oob=~w",
+[OOB]).
+2️⃣ Agregar endpoint en Flask
+
+En tu flask_whatsapp_proxy.py agregar:
+
+@app.route("/identificar")
+def identificar():
+    oob = request.args.get("oob")
+
+    if not oob:
+        return "Missing OOB", 400
+
+    didcomm_link = f"didcomm://?_oob={oob}"
+
+    html = f"""
+    <html>
+    <head>
+        <title>Identificación</title>
+        <script>
+            window.location.href = "{didcomm_link}";
+        </script>
+    </head>
+    <body>
+        <h2>Redirigiendo a la aplicación de identidad...</h2>
+        <p>Si no se abre automáticamente, haz click:</p>
+        <a href="{didcomm_link}">Abrir identificación</a>
+    </body>
+    </html>
+    """
+
+    return html
+
+Esto hace:
+
+https://servidor/identificar?oob=xxx
+        ↓
+abre navegador
+        ↓
+redirige a
+        ↓
+didcomm://?_oob=xxx
+3️⃣ Ahora sí podemos enviar botón válido en WhatsApp
+
+WhatsApp sí permite botones de respuesta.
+
+Cambiar tu bloque:
+
+elif "didcomm://" in prolog_reply:
+
+por:
+
+elif "/identificar?oob=" in prolog_reply:
+
+    m = re.search(r'(https?://\S+)', prolog_reply)
+    if m:
+        link = m.group(1)
+        prefix = prolog_reply.split(link)[0].strip()
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": sender_wa,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": prefix},
+                "action": {
+                    "buttons": [
+                        {
+                            "type": "reply",
+                            "reply": {
+                                "id": "identificar",
+                                "title": "Identificarme"
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+
+        requests.post(GRAPH_URL, headers=HEADERS, json=payload)
+
+Luego cuando el usuario toca el botón, respondemos con el link:
+
+elif msg_type == "button":
+    text = msg["button"]["text"]
+
+    if text == "Identificarme":
+        send_whatsapp_text(sender_wa, link_identificacion_guardado)
+4️⃣ Resultado en WhatsApp
+
+El usuario verá:
+
+Por favor identifícate para continuar
+[ Identificarme ]
+
+al tocar:
+
+https://tu-servidor/identificar?oob=...
+
+y eso abre DIDComm.
+
+----------------------------------------------------------------
+
+namespace APIHook.Clases
 {
   public class CNotificacionCliente
   {

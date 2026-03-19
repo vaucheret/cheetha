@@ -112,10 +112,13 @@ handle_identificacion(Request) :-
     format(user_output,"entro identifiacion ~n",[]),
     %%%%%%% log %%%%%%%%
     format(user_output,"datos de identificacion recibidos ~w~n",[In]),
-		UserID = In.identificacion,
-		IdentificacionValida = In.verificado,
-		(   IdentificacionValida == true
-		->  assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
+    UserID = In.identificacion,
+		format(user_output,"respuesta ~a~n",[In.verificado]),
+
+	  (   In.verificado == true
+	  ->
+	         format(user_output,"identificacion valida para usuario ~w~n",[UserID]),
+	         assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
 		    retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
 		    informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _),
 		    ejecutar_tramite(UserID,Tramite,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Tramite, Mensaje),
@@ -374,8 +377,12 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
 	      %% log %%%%%%% log %%%%%%%%
 	      format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
 	      %% log %%%%%%% log %%%%%%%%
-	      	      format(string(Respuesta),"Por favor identifícate para continuar: ~s",[Resp.presentationContent]),
-	     % Respuesta = "didcomm://?_oob=eyJ0eXBlIjoiaHR0cHM6Ly9kaWRjb21tLm9yZy9vdXQtb2YtYmFuZC8yLjAvaW52aXRhdGlvbiIsImlkIjoiZTc1ZDJmZDYtNjRlZS00NDIxLWIyNjMtNzIzNjVkYWVlYjhmIiwiZnJvbSI6ImRpZDpxdWFya2lkOkVpQ1gxZ2VIOEdSTUNzQUs4UUxnTHU4TjNDc0E3M2JhSHhlMEhJRDlhLXYybXciLCJib2R5Ijp7ImdvYWxfY29kZSI6InN0cmVhbWxpbmVkLXZwIiwiYWNjZXB0IjpbImRpZGNvbW0vdjIiXX19",
+	      LinkDidComm = Resp.presentationContent,
+              sub_atom(LinkDidComm,Before,_,_, "_oob="),
+	      Start is Before + 5,
+	      sub_atom(LinkDidComm,Start,_,0,OOB),
+	      getenv('FLASKURL',FlaskURL),
+	      atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
               assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
 	      )
 	      
@@ -466,10 +473,12 @@ identificado(D,UserID) :-
     D \= 0,
     usuario_identificado(UserID,_,Fecha_Expiracion),
     get_time(TimestampActual),
-    TimestampActual < Fecha_Expiracion. % la identificación es válida si no ha expirado
+    parse_time(Fecha_Expiracion,TimestampExpiracion),
+    TimestampActual < TimestampExpiracion. % la identificación es válida si no ha expirado
 
 solicitar_identificacion(UserID,Dict) :-
-    getenv('WebhookURL',WebhookURL),
+    getenv('FLASKURL',FlaskURL),
+    atom_concat(FlaskURL, '/identificacion_usuario',WebhookURL),
     format(string(URL), "https://thinknetc3.ddns.net/chita/apihook/api/webhooks/ObtenerDeepLink?Identificacion=~w&URLWebHook=~w", [UserID,WebhookURL]),
     catch(
 	http_get(
@@ -484,8 +493,9 @@ solicitar_identificacion(UserID,Dict) :-
 	 %%%%%%% log %%%%%%%%
     ),
     atom_json_term(String,Resp,[as(string)]),
-    atom_json_dict(String, Dict, []),
-    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
+    atom_json_dict(String, Dict, []).
+
+%    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
 
 
 ejecutar_tramite(UserID,T,Contexto,Asincronico,Pasos,Caption,Tram,Respuesta) :-

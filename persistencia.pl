@@ -68,7 +68,7 @@
     usuario_identificado(
 	user_id:string,
 	token:string,
-	fecha_expiracion:timestamp
+	fecha_expiracion:string
     ).
 
 % --------------------------------------------------

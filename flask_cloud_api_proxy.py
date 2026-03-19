@@ -32,6 +32,7 @@ HEADERS = {
 
 
 processed_messages = {}  # dict con id → timestamp
+# links_identificacion = {}  # ← NUEVO
 
 def is_duplicate(message_id, ttl=300):
     """Devuelve True si el mensaje ya fue procesado en los últimos `ttl` segundos"""
@@ -195,6 +196,34 @@ def transcribe_audio(audio_bytes):
         except FileNotFoundError:
             pass
 
+
+@app.route("/identificar")
+def identificar():
+    oob = request.args.get("oob")
+
+    if not oob:
+        return "Missing OOB", 400
+
+    didcomm_link = f"didcomm://?_oob={oob}"
+
+    html = f"""
+    <html>
+    <head>
+        <title>Identificación</title>
+        <script>
+            window.location.href = "{didcomm_link}";
+        </script>
+    </head>
+    <body>
+        <h2>Redirigiendo a la aplicación de identidad...</h2>
+        <p>Si no se abre automáticamente, haz click:</p>
+        <a href="{didcomm_link}">Abrir identificación</a>
+    </body>
+    </html>
+    """
+
+    return html
+
 # --- Webhook ---
 
 @app.route("/webhook", methods=["GET"])
@@ -260,13 +289,29 @@ def webhook():
             reply_mode = "text"
         elif msg_type == "button":
             text = msg["button"]["text"]
+            # if text == "Identificarme":
+            #     link = links_identificacion.get(sender_wa)
+            #     if link:
+            #         send_whatsapp_text(sender_wa, link)
+            #     else:
+            #         send_whatsapp_text(sender_wa, "⚠️ No encontré tu link de identificación. Volvé a intentarlo.")
             reply_mode = "text"
         elif msg_type == "interactive":
-            inter = msg.get("interactive", {})
-            if "button_reply" in inter:
-                text = inter["button_reply"]["title"]
-            elif "list_reply" in inter:
-                text = inter["list_reply"]["title"]
+            # inter = msg.get("interactive", {})
+            # if "button_reply" in inter:
+            #     text = inter["button_reply"]["title"]
+
+            #     if text == "Identificarme":
+            #         link = links_identificacion.get(sender_wa)
+            #         if link:
+            #             send_whatsapp_text(sender_wa, link)
+            #         else:
+            #             send_whatsapp_text(sender_wa, "⚠️ No encontré tu link de identificación.")
+            #             return jsonify({"status": "ok"}), 200
+
+                
+            # elif "list_reply" in inter:
+            #     text = inter["list_reply"]["title"]
             reply_mode = "text"
         elif msg_type in ["audio", "voice"]:
             media_id = msg[msg_type]["id"]
@@ -288,6 +333,7 @@ def webhook():
         try:
             res = requests.post(PROLOG_URL, json=prolog_payload, timeout=65)
             prolog_reply = res.json().get("respuesta", "⚠️ No se pudo obtener respuesta de Prolog")
+            prolog_reply = str(prolog_reply)
         except Exception as e:
             print("❌ Error Prolog:", e)
             prolog_reply = "⚠️ Error al conectar con el motor de diálogo."
@@ -300,27 +346,75 @@ def webhook():
             send_whatsapp_pdf(sender_wa, pdf_link)
             time.sleep(2)
             send_whatsapp_text(sender_wa, f"📄 Te envié el documento:\n{prolog_reply}")
-        # Botón interactivo para identificación (DIDComm)
-        elif "didcomm://" in prolog_reply:
-            m = re.search(r'(didcomm://\S+)', prolog_reply)
+            # Botón interactivo para identificación (DIDComm)
+        elif "/identificar?oob=" in prolog_reply:
+            
+            m = re.search(r'(https?://\S+)', prolog_reply)
             if m:
                 link = m.group(1)
-                payload = {
-                    "messaging_product": "whatsapp",
-                    "to": sender_wa,
-                    "type": "interactive",
-                    "interactive": {
-                        "type": "button",
-                        "body": {"text": "Por favor, presiona el botón para identificarte."},
-                        "action": {
-                            "buttons": [
-                                {"type": "url", "url": link, "title": "Identificarme"}
-                            ]
+                prefix = prolog_reply.split(link)[0].strip()
+                # links_identificacion[sender_wa] = link
+                destinatario = sender_wa
+                if destinatario.startswith("549"):
+                    destinatario = "54" + destinatario[3:]
+
+                    payload = {
+                        "messaging_product": "whatsapp",
+                        "to": destinatario,
+                        "type": "interactive",
+                        "interactive": {
+                            "type": "cta_url",
+                            "header": {
+                                "type": "text",
+                                "text": "Verificación de Identidad"
+                            },
+                            "body": {
+                                "text": prefix[:1024]
+                            },
+                            "footer": {
+                                "text": "Seguridad"
+                            },
+                            "action": {
+                                "name": "cta_url",
+                                "parameters": {
+                                    "display_text": "Identificarme",
+                                    "url": link
+                                }
+                            }
                         }
                     }
-                }
-                requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+                    
+                # payload = {
+                #     "messaging_product": "whatsapp",
+                #     "to": destinatario,
+                #     "type": "interactive",
+                #     "interactive": {
+                #         "type": "button",
+                #         "body": {"text": prefix},
+                #         "action": {
+                #             "buttons": [
+                #                 {
+                #                     "type": "reply",
+                #                     "reply": {
+                #                         "id": "identificar",
+                #                         "title": "Identificarme"
+                #                     }
+                #                 }
+                #             ]
+                #         }
+                #     }
+                # }
+                
+                # requests.post(GRAPH_URL, headers=HEADERS, json=payload)    
+                resp = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+                if resp.status_code >= 300:
+                    print("❌ Error enviando botón interactivo:", resp.status_code, resp.text)
+                    # fallback: enviar texto con el enlace
+                    send_whatsapp_text(sender_wa, f"{prefix} {link}")
+                else:
+                    print("✅ Botón interactivo enviado correctamente")
                 return jsonify({"status": "ok"}), 200
+
         elif contiene_link(prolog_reply):
                 send_whatsapp_text(sender_wa, prolog_reply)
         elif reply_mode == "text":

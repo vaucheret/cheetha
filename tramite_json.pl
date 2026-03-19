@@ -183,7 +183,7 @@ esperar_respuesta_loop(URL, Resultado,Intentos,Intervalo) :-
 	catch(http_get(URL, json(Datos), [request_header('Content-Type'='application/json'),status_code(Code)]), _, fail),
         Code == 200
     ->
-    format("Respuesta recibida de Kafka: ~w~n", [json(Datos)]),
+    format(user_output, "Respuesta recibida de Kafka: ~w~n", [json(Datos)]),
     Datos.resultado = json(Result),
 	Excepcion = Result.'Excepcion',
 		(   Excepcion \= '' ->
