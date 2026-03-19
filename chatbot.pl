@@ -474,8 +474,14 @@ identificado(D,UserID) :-
     usuario_identificado(UserID,_,Fecha_Expiracion),
     get_time(TimestampActual),
     parse_time(Fecha_Expiracion,TimestampExpiracion),
-    TimestampActual < TimestampExpiracion. % la identificación es válida si no ha expirado
-
+    (	
+	TimestampActual < TimestampExpiracion  % la identificación es válida si no ha expirado
+    -> 	true
+    ;   % identificación expiró, eliminar registro
+	retract_usuario_identificado(UserID,_,_),
+	fail
+		).
+     
 solicitar_identificacion(UserID,Dict) :-
     getenv('FLASKURL',FlaskURL),
     atom_concat(FlaskURL, '/identificacion_usuario',WebhookURL),
