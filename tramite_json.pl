@@ -17,7 +17,7 @@ manejar los archivos donde se definen los tramites y contiene la
 base de datos interna de los tramites, asi como los datos recolectados
 */
 
-:- use_module(library(json)).
+
 :- use_module(library(http/json)).
 :- use_module(library(apply), [maplist/3, include/3, maplist/2]).
 :- use_module(library(http/http_client), [http_post/4,http_get/3]).

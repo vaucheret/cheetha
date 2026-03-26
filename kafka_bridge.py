@@ -3,12 +3,14 @@ from kafka import KafkaProducer, KafkaConsumer
 import threading
 import json
 import requests
+import os
 
 app = Flask(__name__)
 
 #KAFKA_SERVER = "localhost:9092"
 KAFKA_SERVER = '66.70.179.213:9092'
-PROLOG_URL = "http://localhost:8000/notificacion_tramite"
+PROLOG_BASE_URL = os.getenv("PROLOG_BASE_URL")
+TRAM_PROLOG_URL = f"{PROLOG_BASE_URL}/notificacion_tramite"
 
 # Enviar a Kafka
 producer = KafkaProducer(
@@ -94,7 +96,7 @@ def escuchar_tramites_asincronicos():
 
         try:
             response = requests.post(
-                PROLOG_URL,
+                TRAM_PROLOG_URL,
                 json={
                     "user_id": usuario,
                     "tramite_id": idtramite,

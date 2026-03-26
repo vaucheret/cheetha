@@ -1,1 +1,5 @@
 created(1773869243.4096422).
+assert(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+retract(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+assert(estado("5492995301481",buscar_tramite,_{historia:[user-"hola",assistant-"Hola, ¿en qué trámite puedo ayudarte hoy? Puedes continuar con un trámite pendiente o iniciar uno nuevo. ¿Qué prefieres?"]},[])).
+retractall(estado("5492995301481",_,_,_),1).

@@ -16,7 +16,9 @@ app = Flask(__name__, static_url_path="/static", static_folder="static")
 load_dotenv()
 
 # === Config ===
-PROLOG_URL = os.getenv("CHAT_PROLOG_URL")
+PROLOG_BASE_URL = os.getenv("PROLOG_BASE_URL")
+CHAT_PROLOG_URL = f"{PROLOG_BASE_URL}/chat"
+IDENT_PROLOG_URL = f"{PROLOG_BASE_URL}/identificacion_usuario"
 VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN")
 ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
@@ -253,7 +255,7 @@ def enviar_mensaje():
 def identificacion_usuario():
     data = request.json
     try:
-        res = requests.post("http://localhost:8000/identificacion_usuario", json=data, timeout=10)
+        res = requests.post(IDENT_PROLOG_URL, json=data, timeout=10)
         return jsonify(res.json()), res.status_code
     except Exception as e:
         print(f"❌ Error reenviando identificación: {e}")
@@ -331,7 +333,7 @@ def webhook():
         # --- Pasar a Prolog ---
         prolog_payload = {"message": {"user_id": sender_wa, "text": text}}
         try:
-            res = requests.post(PROLOG_URL, json=prolog_payload, timeout=65)
+            res = requests.post(CHAT_PROLOG_URL, json=prolog_payload, timeout=65)
             prolog_reply = res.json().get("respuesta", "⚠️ No se pudo obtener respuesta de Prolog")
             prolog_reply = str(prolog_reply)
         except Exception as e:

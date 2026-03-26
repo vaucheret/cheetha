@@ -1,7 +1,6 @@
 /token
 /static/
 /temp.ogg
-/.env
 /*~
 .aider*
 /estado_usuarios.pl
