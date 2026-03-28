@@ -171,7 +171,8 @@ handle_notificacion(Request) :-
 		).
 
 enviar_mensaje_usuario(UserID, Texto) :-
-    getenv('PrologURL',PrologURL),
+    getenv('FLASKURL',FlaskURLLocal),
+    atom_concat(FlaskURLLocal, '/enviar_mensaje',PrologURL),
     catch(
         http_post(
             PrologURL,

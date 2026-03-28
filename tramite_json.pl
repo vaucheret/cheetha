@@ -144,8 +144,10 @@ cargar_variables_tramite_en_espera(Variables,Pasos) :-
 
 exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Topico,TopicoRes,Tokeninicio) :-
     crearDictJsonTramite(UserID,Tramite,TramiteID,Dict,TopicoRes,Tokeninicio),
+    getenv('KAFKA_BRIDGE_URL', KafkaURL),
+    atom_concat(KafkaURL,'/enviar_a_kafka', KafkaEndpoint),
     setup_call_cleanup(
-        http_post('http://localhost:8090/enviar_a_kafka',
+        http_post(KafkaEndpoint,
                   json(_{ topic: Topico, mensaje: Dict }),
                   _,
                   [request_header('Content-Type'='application/json')]),
@@ -171,7 +173,9 @@ completar_variable(UserID,Tramite, paso(Id, _Caption,_Tipo,_Opciones), P) :-
 
 esperar_respuesta_kafka(UserID, Tramite,TramiteID, Resultado) :-
     informacion_tramite(Tramite,Codigo,_,_,_),
-    format(string(URL), 'http://localhost:8090/resultado_tramite?usuario=~w&codigo=~w&id=~w', [UserID,Codigo,TramiteID]),
+    getenv('KAFKA_BRIDGE_URL', KafkaURL),
+    atom_concat(KafkaURL,'/resultado_tramite?usuario=~w&codigo=~w&id=~w', URLTemplate),
+    format(string(URL), URLTemplate, [UserID,Codigo,TramiteID]),
     MaxIntentos = 30,
     IntervaloSeg = 2,
     esperar_respuesta_loop(URL, Resultado,MaxIntentos,IntervaloSeg).
