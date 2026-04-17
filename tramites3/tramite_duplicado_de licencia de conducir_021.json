@@ -1,0 +1,54 @@
+{
+    "CodigoInterno":284425,
+    "Identificacion":"Duplicado del Permiso oficial para conducir vehículos, requiere examen médico y de manejo",
+    "Tramite":"duplicado de licencia de conducir",
+    "Variables": [
+	{
+	    "Caption":"¿Aprobaste el examen teórico?",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Realizaste el examen médico?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Tipo de licencia solicitada",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Profesión u ocupación",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de expediente anterior",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "loginNecesario":1
+}

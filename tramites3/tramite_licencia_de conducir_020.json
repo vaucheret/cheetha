@@ -1,0 +1,63 @@
+{
+    "CodigoInterno":513540,
+    "Identificacion":"Permiso oficial para conducir vehículos, requiere examen médico y de manejo",
+    "Tramite":"licencia de conducir",
+    "Variables": [
+	{
+	    "Caption":"¿Aprobaste el examen teórico?",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Realizaste el examen médico?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Tipo de licencia solicitada",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Nacionalidad",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Tenés representante legal?",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del último trámite similar",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "loginNecesario":1
+}

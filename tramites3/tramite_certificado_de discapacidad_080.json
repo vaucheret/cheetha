@@ -1,0 +1,54 @@
+{
+    "CodigoInterno":974651,
+    "Identificacion":"Documento oficial que acredita la condición de discapacidad para acceder a beneficios y derechos",
+    "Tramite":"certificado de discapacidad",
+    "Variables": [
+	{
+	    "Caption":"Tipo de discapacidad",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Cuenta con informes médicos?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de los estudios médicos",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de expediente anterior",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del último trámite similar",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "loginNecesario":0
+}

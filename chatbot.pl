@@ -9,7 +9,7 @@
 :- use_module(gramatica).
 :- use_module(persistencia).
 :- use_module(readenv, [load_dot_env/1]).
-:- use_module(library(http/json)).
+:- use_module(library(json)).
 :- use_module(library(apply), [maplist/3]).
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
@@ -39,7 +39,7 @@ set_provider(Provider) :-   % openai , deepseek , gemini or groq
 start_server(Provider,Port) :-
     set_provider(Provider),
     load_dot_env('.env'),
-%    cargar_tramites,
+    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
     init_db,
@@ -49,7 +49,7 @@ start_server(Provider,Port) :-
 iniciar_chat(Provider) :-
     set_provider(Provider),
     load_dot_env('.env'),
-%    cargar_tramites,
+    cargar_tramites,
     cargar_tramites_from_url2,
     cargar_preguntas_cache,
     init_db,
@@ -119,8 +119,10 @@ handle_identificacion(Request) :-
 	  ->
 	         format(user_output,"identificacion valida para usuario ~w~n",[UserID]),
 	         assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
-		    retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
-		    informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _),
+%		 retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
+		 retract_tramite_en_espera(UserID,T,TramiteID, Contexto),
+		 flujo_tramite(T, P),
+		    informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _,_),
 		    ejecutar_tramite(UserID,Tramite,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Tramite, Mensaje),
 		    enviar_mensaje_usuario(UserID, Mensaje),
 		    reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
@@ -295,9 +297,9 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	      %%%%%%% log %%%%%%%%
 	      
               assert_estado(UserID, confirmar_continuar_tramite, CtxPend, Pasos),
-	      informacion_tramite(TramitePendiente, CtxPend.tramite, _,_, _),
+	      informacion_tramite(TramitePendiente, CtxPend.tramite, _,_, _,_),
 	      format(string(Respuesta),
-	                      "~s ¿Querés continuar con el trámite «~w»?", [D.respuesta, TramitePendiente])
+	                      "~s Tramite a continuar:  «~w»", [D.respuesta, TramitePendiente])
 	  ;
 	  D.accion == "nuevo",
 
@@ -312,7 +314,7 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	    %format(user_output,"tramite nuevo a iniciar ~w~n",[D.tramite_nuevo]),
 	    %%%%%%% log %%%%%%%%
 
-	    informacion_tramite(TramiteA,TramiteCod,_,_,_),
+	    informacion_tramite(TramiteA,TramiteCod,_,_,_,_),
 
 	    %%%%%%% log %%%%%%%%n
 	    %format(user_output,"tramite nuevo a iniciar ~w~n",[TramiteA]),
@@ -326,10 +328,10 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	    
 	    ->
               format(string(Respuesta),
-	         "~s ¿Querés hacer el trámite «~w»?", [D.respuesta, TramiteA]),
+	         "~s TRÁMITE: «~w»", [D.respuesta, TramiteA]),
 	      append(Hist1, [assistant-Respuesta], HistFinal),
               assert_estado(UserID, confirmar_tramite,
-			    _{tramite:D.tramite_nuevo, historia:HistFinal}, [])
+			    _{tramite:TramiteCod, historia:HistFinal}, [])
 	    ;
 	    D.accion == "preguntar"
 	      ->
@@ -361,32 +363,38 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
     resolver_intencion_pos_neg(Hist1, D),
     (	D.intent == "confirmar_si"
 	  ->
-	      informacion_tramite(T, Contexto.tramite, Asincronico,Auth, _),
-	      uuid(TramiteID),
-	      flujo_tramite(T, P ),
-	      (
-		  identificado(Auth,UserID)
-
-	      -> 
-		  ejecutar_tramite(UserID,T,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),
-									   Asincronico,P,"Perfecto, iniciemos el trámite «~w». ~s",T, Respuesta)
+	      informacion_tramite(T, Contexto.tramite, Asincronico,Auth, Descripcion,Aut),
+              % aca consultar automatizado
+	      (	  Aut.'Automatizado' == true ->
+		  uuid(TramiteID),
+		  flujo_tramite(T, P ),
+		  (
+		      identificado(Auth,UserID)
+		  
+		  -> 
+		  ejecutar_tramite(UserID,T,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Perfecto, iniciemos el trámite «~w». ~s",T, Respuesta)
+		  ;
+		  %% log %%%%%%% log %%%%%%%%
+		  format(user_output,"usuario no identificado, se solicita identificacion para continuar ~w~n",[UserID]),
+		  %% log %%%%%%% log %%%%%%%%
+		  solicitar_identificacion(UserID,Resp),
+		  %% log %%%%%%% log %%%%%%%%
+		  format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
+		  %% log %%%%%%% log %%%%%%%%
+		  LinkDidComm = Resp.presentationContent,
+                  sub_atom(LinkDidComm,Before,_,_, "_oob="),
+		  Start is Before + 5,
+		  sub_atom(LinkDidComm,Start,_,0,OOB),
+		  getenv('FLASKURL',FlaskURL),
+		  atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
+%		  assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
+		  assert_tramite_en_espera(UserID,T,TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true))		     
+		  )
 	      ;
-	      %% log %%%%%%% log %%%%%%%%
-	      format(user_output,"usuario no identificado, se solicita identificacion para continuar ~w~n",[UserID]),
-	      %% log %%%%%%% log %%%%%%%%
-	      solicitar_identificacion(UserID,Resp),
-	      %% log %%%%%%% log %%%%%%%%
-	      format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
-	      %% log %%%%%%% log %%%%%%%%
-	      LinkDidComm = Resp.presentationContent,
-              sub_atom(LinkDidComm,Before,_,_, "_oob="),
-	      Start is Before + 5,
-	      sub_atom(LinkDidComm,Start,_,0,OOB),
-	      getenv('FLASKURL',FlaskURL),
-	      atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
-              assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
+	      % no es automatizado, dar informacion y seguir con el dialog
+	      format(string(Respuesta),
+	             "Perfecto, ésta es la información para el trámite «~w»: ~n ~w ~n Instrucciones: ~w ~n  En que mas te puedo ayudar?",[T, Descripcion,Aut.'Descripcion'])
 	      )
-	      
   ;
        D.intent == "confirmar_no"
 	 ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
@@ -408,7 +416,7 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
     resolver_intencion_pos_neg(Hist1, D),
     (	D.intent == "confirmar_si"
 	  ->
-              informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_),
+              informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
 	      ejecutar_tramite(UserID,T,Contexto,Asincronico,P,
 			     "Perfecto, continuamos con el trámite «~w». ~s",
 			     T, Respuesta)
@@ -452,7 +460,7 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
 procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     retract_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes]),
     string_codes(Line,LineS),
-    informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_),
+    informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
     Paso = paso(Id,_,Tipo,_),
         (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
         ->  assert_dato_tramite(UserID,T,Id,Line1),
@@ -500,8 +508,8 @@ solicitar_identificacion(UserID,Dict) :-
 	 %%%%%%% log %%%%%%%%
     ),
     atom_json_term(String,Resp,[as(string)]),
-    atom_json_dict(String, Dict, []).
-
+    atom_json_dict(String, Dict, [])
+.
 %    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
 
 
@@ -561,7 +569,7 @@ pendientes_usuario(UserID, Pendientes) :-
         _{tramite_id:ID, tramite:T},
 	(   
             tramite_pendiente(UserID, ID, Contexto, _),
-	    informacion_tramite(T, Contexto.tramite, _Asincronico,_Auth, _)
+	    informacion_tramite(T, Contexto.tramite, _Asincronico,_Auth, _,_)
 	    ),
         Pendientes
     ).
@@ -597,11 +605,11 @@ Decidí UNA sola opción de accion y respondé SOLO en JSON:
 	call_llm_with_context(H2, R) ->
 	(
 	    is_json_valid(R) ->
-	    (   
+	       
 		atom_json_dict(R, Decision, [])
 	    ;	
-	    Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
-	    )
+	    Decision = _{accion:"preguntar",tramite_id:null, respuesta:R}
+	    
 	)
 	%% (
 	%%     atom_json_dict(R, Decision, []) -> true

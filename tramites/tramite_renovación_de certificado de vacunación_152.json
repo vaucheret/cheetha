@@ -1,0 +1,64 @@
+{
+    "CodigoInterno":264514,
+    "Identificacion":"Renovación del Documento que acredita las vacunas recibidas, requerido para viajes e inscripciones escolares",
+    "Tramite":"renovación de certificado de vacunación",
+    "Variables": [
+	{
+	    "Caption":"Vacunas requeridas",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Es para viaje internacional?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de la última vacuna",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de teléfono de contacto",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Cantidad de copias solicitadas",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Email de contacto",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse al centro de salud con DNI y carnet de vacunación\n2. Verificar que las vacunas estén al día según calendario oficial\n3. Aplicar vacunas faltantes si es necesario\n4. Solicitar certificado internacional si es para viaje\n5. Completar formulario con destino y fechas de viaje\n6. Retirar el certificado en 24-48 horas",
+    "loginNecesario":0
+}

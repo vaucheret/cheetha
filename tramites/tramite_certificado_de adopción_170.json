@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":454188,
+    "Identificacion":"Documento legal que formaliza el proceso de adopción de menores de edad",
+    "Tramite":"certificado de adopción",
+    "Variables": [
+	{
+	    "Caption":"Nombre del menor a adoptar",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Completó el proceso de evaluación?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Estado civil de los adoptantes",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de teléfono de contacto",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Inscribirse en el registro de adoptantes\n2. Completar evaluación psicológica y social\n3. Participar en cursos de preparación para adoptantes\n4. Esperar asignación de menor compatible\n5. Realizar período de vinculación supervisada\n6. Formalizar adopción ante juez de familia",
+    "loginNecesario":1
+}

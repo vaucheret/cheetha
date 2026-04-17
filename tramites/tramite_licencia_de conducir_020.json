@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":763588,
+    "Identificacion":"Permiso oficial para conducir vehículos, requiere examen médico y de manejo",
+    "Tramite":"licencia de conducir",
+    "Variables": [
+	{
+	    "Caption":"¿Aprobaste el examen teórico?",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Realizaste el examen médico?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Tipo de licencia solicitada",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Código postal de residencia",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "descripcion":"Pasos para realizar el trámite:\n1. Rendir examen teórico en centro de emisión de licencias\n2. Realizar examen médico y psicofísico en centro habilitado\n3. Presentar DNI, certificado médico y comprobante de domicilio\n4. Abonar las tasas correspondientes\n5. Rendir examen práctico de manejo\n6. Retirar la licencia una vez aprobados todos los exámenes",
+    "loginNecesario":1
+}

@@ -1,0 +1,54 @@
+{
+    "CodigoInterno":121221,
+    "Identificacion":"Renovación del Autorización municipal para realizar obras de construcción o refacción en propiedades",
+    "Tramite":"renovación de permiso de construcción",
+    "Variables": [
+	{
+	    "Caption":"Dirección de la obra",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Tipo de construcción",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Metros cuadrados a construir",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de vencimiento del documento anterior",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de legajo",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "loginNecesario":0
+}

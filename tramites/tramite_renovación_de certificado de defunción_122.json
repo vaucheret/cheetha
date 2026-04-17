@@ -1,0 +1,64 @@
+{
+    "CodigoInterno":399722,
+    "Identificacion":"Renovación del Documento oficial que certifica el fallecimiento de una persona, necesario para trámites sucesorios",
+    "Tramite":"renovación de certificado de defunción",
+    "Variables": [
+	{
+	    "Caption":"Nombre completo del fallecido",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de fallecimiento",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Lugar de fallecimiento",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Cantidad de copias solicitadas",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Nacionalidad",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de expediente anterior",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse al Registro Civil con DNI del solicitante\n2. Presentar DNI del fallecido y certificado médico de defunción\n3. Adjuntar acta de defunción del hospital o institución\n4. Completar formulario de solicitud del certificado\n5. Abonar tasa administrativa si corresponde\n6. Retirar el certificado en el momento o en 24 horas",
+    "loginNecesario":1
+}

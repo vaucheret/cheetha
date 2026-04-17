@@ -1,0 +1,45 @@
+{
+    "CodigoInterno":789080,
+    "Identificacion":"Duplicado del Documento legal que formaliza el proceso de adopción de menores de edad",
+    "Tramite":"duplicado de certificado de adopción",
+    "Variables": [
+	{
+	    "Caption":"Nombre del menor a adoptar",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Completó el proceso de evaluación?",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Estado civil de los adoptantes",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Código postal de residencia",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "loginNecesario":0
+}

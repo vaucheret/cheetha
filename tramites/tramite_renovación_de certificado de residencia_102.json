@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":639440,
+    "Identificacion":"Renovación del Documento que acredita el domicilio real de una persona en una jurisdicción específica",
+    "Tramite":"renovación de certificado de residencia",
+    "Variables": [
+	{
+	    "Caption":"Dirección actual",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Tiempo de residencia en años",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Cuenta con servicios a su nombre?",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del último trámite similar",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse a la comisaría de la zona con DNI\n2. Presentar facturas de servicios a su nombre (luz, gas, agua)\n3. Adjuntar contrato de alquiler o escritura de propiedad\n4. Completar formulario de solicitud de certificado\n5. Proporcionar datos de dos testigos vecinos\n6. Retirar el certificado en 24-48 horas hábiles",
+    "loginNecesario":0
+}

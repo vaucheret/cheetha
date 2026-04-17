@@ -1,0 +1,64 @@
+{
+    "CodigoInterno":307161,
+    "Identificacion":"Documento que acredita la finalización de estudios primarios, secundarios o superiores",
+    "Tramite":"certificado de estudios",
+    "Variables": [
+	{
+	    "Caption":"Nivel educativo completado",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Institución educativa",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Año de finalización",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de teléfono de contacto",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del último trámite similar",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Profesión u ocupación",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse a la institución educativa donde cursó con DNI\n2. Completar formulario de solicitud de certificado\n3. Presentar libreta de calificaciones o analítico\n4. Abonar tasa administrativa si corresponde\n5. Esperar verificación de datos académicos\n6. Retirar el certificado en 5-10 días hábiles",
+    "loginNecesario":0
+}

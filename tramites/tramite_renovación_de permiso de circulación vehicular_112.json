@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":340695,
+    "Identificacion":"Renovación del Autorización temporal para circular con vehículos en situaciones especiales o sin documentación completa",
+    "Tramite":"renovación de permiso de circulación vehicular",
+    "Variables": [
+	{
+	    "Caption":"Patente del vehículo",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Motivo del permiso",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha hasta la cual necesita el permiso",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Es urgente este trámite?",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse al registro automotor con DNI del titular\n2. Presentar cédula verde o azul del vehículo\n3. Adjuntar comprobante de seguro vigente\n4. Completar formulario explicando el motivo del permiso\n5. Abonar tasa administrativa correspondiente\n6. Retirar el permiso temporal en el momento",
+    "loginNecesario":0
+}

@@ -1,4 +1,16 @@
-﻿Perfecto. Vamos a implementar la arquitectura correcta para WhatsApp + DIDComm, que funciona sin errores de la API y mantiene el botón para el usuario.
+﻿public class CTramiteCN
+  {
+    public int Id_Tramite { get; set; } = -1;
+    public string Nombre { get; set; } = "";
+    public string? Descripcion { get; set; } = null;
+    public int Id_Equipo { get; set; } = -1;
+    public int Id_Area_Interna { get; set; } = -1;
+    public double Demora_Tiempo_Neto { get; set; } = 0;
+    public double Demora_Tiempo_Calendario { get; set; } = 0;
+    public string? Link { get; set; } = null;
+    public int Activo { get; set; } = 0;
+
+Perfecto. Vamos a implementar la arquitectura correcta para WhatsApp + DIDComm, que funciona sin errores de la API y mantiene el botón para el usuario.
 
 La idea es:
 

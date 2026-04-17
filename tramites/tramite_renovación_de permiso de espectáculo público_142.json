@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":318320,
+    "Identificacion":"Renovación del Autorización municipal para realizar eventos, shows o espectáculos abiertos al público",
+    "Tramite":"renovación de permiso de espectáculo público",
+    "Variables": [
+	{
+	    "Caption":"Tipo de espectáculo",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del evento",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Cantidad estimada de asistentes",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Tenés representante legal?",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":false,
+    "descripcion":"Pasos para realizar el trámite:\n1. Presentar solicitud en oficina de espectáculos públicos con 15 días de anticipación\n2. Adjuntar programa del evento y datos del organizador\n3. Presentar plano del lugar y medidas de seguridad\n4. Contratar servicio de ambulancia y seguridad privada\n5. Abonar tasas municipales correspondientes\n6. Esperar inspección municipal y retirar el permiso",
+    "loginNecesario":0
+}

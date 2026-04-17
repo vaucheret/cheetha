@@ -1,0 +1,64 @@
+{
+    "CodigoInterno":994893,
+    "Identificacion":"Renovación del Autorización legal para poseer armas de fuego con fines deportivos, de colección o defensa personal",
+    "Tramite":"renovación de permiso de tenencia de armas",
+    "Variables": [
+	{
+	    "Caption":"Tipo de arma",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Motivo de la tenencia",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Aprobó el examen psicofísico?",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de vencimiento del documento anterior",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Email de contacto",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha del último trámite similar",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Solicitar turno en RENAR (Registro Nacional de Armas)\n2. Presentar DNI, certificado de antecedentes penales y contravencionales\n3. Realizar examen psicofísico en centro habilitado\n4. Completar curso de manejo seguro de armas\n5. Justificar motivo de tenencia (deporte, colección, defensa)\n6. Abonar tasas y esperar resolución del permiso",
+    "loginNecesario":1
+}

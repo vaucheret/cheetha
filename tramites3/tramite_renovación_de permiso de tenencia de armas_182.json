@@ -1,0 +1,45 @@
+{
+    "CodigoInterno":787664,
+    "Identificacion":"Renovación del Autorización legal para poseer armas de fuego con fines deportivos, de colección o defensa personal",
+    "Tramite":"renovación de permiso de tenencia de armas",
+    "Variables": [
+	{
+	    "Caption":"Tipo de arma",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Motivo de la tenencia",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Aprobó el examen psicofísico?",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Es urgente este trámite?",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "loginNecesario":0
+}

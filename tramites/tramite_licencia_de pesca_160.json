@@ -1,0 +1,64 @@
+{
+    "CodigoInterno":543786,
+    "Identificacion":"Permiso oficial para realizar actividades de pesca deportiva o comercial en aguas jurisdiccionales",
+    "Tramite":"licencia de pesca",
+    "Variables": [
+	{
+	    "Caption":"Tipo de pesca (deportiva/comercial)",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Zona de pesca",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Cuenta con embarcación propia?",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Email de contacto",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de teléfono de contacto",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de nacimiento",
+	    "Codigo":"35",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Dirigirse a la oficina de pesca con DNI\n2. Completar formulario especificando tipo y zona de pesca\n3. Presentar certificado médico de aptitud física\n4. Adjuntar documentación de la embarcación (si corresponde)\n5. Abonar tasa anual de licencia de pesca\n6. Retirar la licencia y respetar vedas y límites establecidos",
+    "loginNecesario":0
+}

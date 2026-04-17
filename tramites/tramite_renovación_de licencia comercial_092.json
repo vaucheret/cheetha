@@ -1,0 +1,46 @@
+{
+    "CodigoInterno":125602,
+    "Identificacion":"Renovación del Permiso municipal para ejercer actividades comerciales en un local determinado",
+    "Tramite":"renovación de licencia comercial",
+    "Variables": [
+	{
+	    "Caption":"Tipo de actividad comercial",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Dirección del local",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Superficie del local en m2",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Número de CUIL/CUIT",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Presentar solicitud en oficina de habilitaciones comerciales\n2. Adjuntar contrato de alquiler o título de propiedad del local\n3. Presentar plano del local firmado por profesional habilitado\n4. Completar formulario con descripción de la actividad comercial\n5. Abonar tasas municipales correspondientes\n6. Esperar inspección municipal y retirar la habilitación",
+    "loginNecesario":1
+}

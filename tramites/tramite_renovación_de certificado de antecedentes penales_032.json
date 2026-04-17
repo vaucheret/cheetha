@@ -1,0 +1,55 @@
+{
+    "CodigoInterno":734762,
+    "Identificacion":"Renovación del Documento que certifica la ausencia de antecedentes penales, requerido para trabajos y trámites oficiales",
+    "Tramite":"renovación de certificado de antecedentes penales",
+    "Variables": [
+	{
+	    "Caption":"Ingrese su número de DNI",
+	    "Codigo":"30",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"numero",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Motivo de la solicitud",
+	    "Codigo":"31",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"¿Es para uso en el exterior?",
+	    "Codigo":"32",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"booleano",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Email de contacto",
+	    "Codigo":"33",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"texto",
+	    "Valor":"",
+	    "Vector":"No"
+	},
+	{
+	    "Caption":"Fecha de nacimiento",
+	    "Codigo":"34",
+	    "Pedir":"Si",
+	    "PorDefecto":"",
+	    "Tipo":"fecha",
+	    "Valor":"",
+	    "Vector":"No"
+	}
+    ],
+    "asincronico":true,
+    "descripcion":"Pasos para realizar el trámite:\n1. Solicitar turno online en www.argentina.gob.ar o llamando al 0800-222-1234\n2. Dirigirse a la oficina del Registro Nacional de Reincidencia con DNI original\n3. Completar formulario de solicitud en el lugar\n4. Abonar la tasa correspondiente (consultar monto actualizado)\n5. Retirar el certificado en 48-72 horas hábiles o solicitar envío por correo",
+    "loginNecesario":0
+}
