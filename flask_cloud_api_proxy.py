@@ -248,7 +248,15 @@ def enviar_mensaje():
     user_id = data["user_id"]
     texto = data["texto"]
 
-    send_whatsapp_text(user_id, texto)
+    pdf_link = extraer_link_pdf(texto)
+    
+    if pdf_link:
+            # Mandar el PDF como documento y además el texto como apoyo
+            send_whatsapp_pdf(user_id, pdf_link)
+            time.sleep(2)
+            send_whatsapp_text(user_id, f"📄 Te envié el documento:\n{texto}")
+    else:
+        send_whatsapp_text(user_id, texto)
     return jsonify({"status": "ok"})
 
 @app.route("/identificacion_usuario", methods=["POST"])
@@ -418,12 +426,13 @@ def webhook():
                 return jsonify({"status": "ok"}), 200
 
         elif contiene_link(prolog_reply):
-                send_whatsapp_text(sender_wa, prolog_reply)
+            send_whatsapp_text(sender_wa, prolog_reply)
         elif reply_mode == "text":
             send_whatsapp_text(sender_wa, prolog_reply)
         else:  # reply_mode == "audio"
           #  send_whatsapp_text(sender_wa, f"📖 Respuesta: {prolog_reply}")
-            text_to_speech_and_send(sender_wa, prolog_reply)
+          #  text_to_speech_and_send(sender_wa, prolog_reply)
+            send_whatsapp_text(sender_wa, prolog_reply)
 
         return jsonify({"status": "ok"}), 200
 

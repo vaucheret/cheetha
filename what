@@ -1,4 +1,311 @@
-﻿public class CTramiteCN
+﻿https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
+
+{
+  "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkNsYXZlMSIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0IiwiVXNlcl9OYW1lX0FQSSI6ImZjdWVsbG8iLCJOb21icmVfQVBJIjoiQ3VlbGxvLCBBbGZyZWRvIiwianRpIjoiNTdjNTE4MDljNWE5NGJhYjg0MmZjNWUxZTBmYTc4NjQiLCJraWQiOiJDbGF2ZTEiLCJSb2xfQVBJIjpbIlVzdWFyaW8iLCJBZG1pbmlzdHJhZG9yIl0sIkNvcnJlbyI6InJwZXJhenpvbGxpQGhvdG1haWwuY29tIiwiVmFyaWFibGUgTnJvIDIiOiIyMSIsIkZlY2hhTiI6IjE5ODAwMTAxMDAwMDAwIiwiTm9tYnJlIjoiSnVhbiBQZXJleiIsImN1aXQiOiIzMzY4MzEzMjg1OSIsIm5iZiI6MTc4MDQzOTQyNSwiZXhwIjoxNzgwNDQzMDI1LCJpYXQiOjE3ODA0Mzk0MjUsImlzcyI6IkVtaXNvckpXVE1vdG9yQ2hpdGEiLCJhdWQiOiJBdWRpZW5jaWFKV1RDaGl0YSJ9.H7sksKkwE2COTYZIZLzDZvO5aEMHAPK9aPizLVdrVwKG6kmIydMJ1UB3ainPUtanqylOwOF5Z9EYY-VUdx6A5Q",
+  "vencimiento": "2026-06-02T23:30:25.2092618Z",
+  "respuestaOK": true,
+  "msgErr": ""
+}
+
+
+https://thinknetc3.ddns.net/chitaV2/APIGPS/swagger/index.html
+
+{
+  "tramites": [
+    {
+      "codigo": 1002,
+      "codigoRIL": 83,
+      "nombre": "Certificado deudor moroso alimentario",
+      "descripcion": "",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": false,
+      "listaPalabras": "",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 1,
+      "codigoRIL": 80,
+      "nombre": "Crear credencial verificable",
+      "descripcion": "Crear una credencial verificable a partir de datos ingresados por la pantalla.",
+      "codigoEnCatalogo": 1,
+      "entidadResponsable": "Adhesión a boleta digital tasas municipales",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "[Mayor_Edad]",
+      "flujograma": true,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "[Mayor_Edad]",
+      "asincronico": true,
+      "listaPalabras": "aa qwqw",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 1006,
+      "codigoRIL": -1,
+      "nombre": "Ejecutar proceso desde Pecas WF",
+      "descripcion": "Ejecuta un proceso desde PecasWF permitiendo pasar variables iniciales y recibiendo las variables seleccionadas al completarse.",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": true,
+      "listaPalabras": "",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 1008,
+      "codigoRIL": -1,
+      "nombre": "Ejemplo de trámite con identificación.",
+      "descripcion": "Ejemplo de uso de identificación con Sovra que consulta una fuente auténtica y emita un certificado con firma digital.",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "--",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": false,
+      "listaPalabras": "",
+      "loginNecesario": 2
+    },
+    {
+      "codigo": 4,
+      "codigoRIL": 82,
+      "nombre": "Emisión de certificado cuando no es deudor",
+      "descripcion": "Tramite de pruebas",
+      "codigoEnCatalogo": 3,
+      "entidadResponsable": "Perico",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": false,
+      "listaPalabras": "qq qq",
+      "loginNecesario": 2
+    },
+    {
+      "codigo": 1007,
+      "codigoRIL": -1,
+      "nombre": "Flujograma subtramite",
+      "descripcion": "",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": true,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": true,
+      "listaPalabras": "",
+      "loginNecesario": 1
+    },
+    {
+      "codigo": 3,
+      "codigoRIL": 81,
+      "nombre": "Libre deuda municipio de Escobar",
+      "descripcion": "Tramite de pruebas",
+      "codigoEnCatalogo": 2,
+      "entidadResponsable": "Perico",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": false,
+      "listaPalabras": "aa aaaa",
+      "loginNecesario": 1
+    },
+    {
+      "codigo": 1003,
+      "codigoRIL": -1,
+      "nombre": "Prueba",
+      "descripcion": "Para probar requisitos",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": true,
+      "listaPalabras": "",
+      "loginNecesario": 1
+    },
+    {
+      "codigo": 1005,
+      "codigoRIL": -1,
+      "nombre": "Prueba CV",
+      "descripcion": "Ejemplo de proyecto para crear credenciales verificables",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "--",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": false,
+      "listaPalabras": "",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 1009,
+      "codigoRIL": -1,
+      "nombre": "Prueba pedir datos desde correo",
+      "descripcion": "",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "<No corresponde>",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": true,
+      "listaPalabras": "",
+      "loginNecesario": 0
+    },
+    {
+      "codigo": 1004,
+      "codigoRIL": 84,
+      "nombre": "Prueba pedir datos WhatsApp",
+      "descripcion": "Es una prueba para crear el mensaje de pedido de datos a traves del WP",
+      "codigoEnCatalogo": -1,
+      "entidadResponsable": "--",
+      "ejecutorOK": -1,
+      "ejecutorAborta": -1,
+      "rutinaHabilitado": -1,
+      "expresionHabilitado": "",
+      "flujograma": false,
+      "habilitado": true,
+      "rutinaValidez": -1,
+      "expresionValidez": "",
+      "asincronico": true,
+      "listaPalabras": "",
+      "loginNecesario": 1
+    }
+  ],
+  "respuestaOK": true,
+  "msgErr": ""
+}
+
+
+
+{
+  "Accion":1,
+  "UsuarioChatBot":"UsuarioPrueba",
+  "CodigoTramite":1004,
+  "TramiteID":"854288fce6e14e9f86aeec6d615e55e8",
+  "InstanciaTramite":2704,
+  "InstanciaStep":600,
+  "Excepcion":"",
+  "URLKafkaEE":"66.70.179.213:9092",
+  "TopicoKafkaEE":"DATOS_WAP",
+  "UsuarioKafkaEE":"--",
+  "ClaveKafkaEE":"--",
+  "URLKafkaMotor":"66.70.179.213:9092",
+  "TopicoKafkaMotor":"GPS_MotorPrueba",
+  "UsuarioKafkaMotor":"--",
+  "ClaveKafkaMotor":"--",
+  "Variables":[],
+  "Descripci\u00F3n":"",
+  "VariablesContexto":[],
+  "VariablesPedidas":[
+          {"codigo":32,"label":"Ingrese su CUIT","listaquery":[],"clase":4},
+	  {"codigo":33,"label":"Ingrese su edad","listaquery":[],"clase":1},
+	  {"codigo":34,"label":"Defina su sexo (M: Masculino - F: Femenino)","listaquery":[],"clase":4}
+	  ],
+  "TextoBoton":"",
+  "Link":""
+}
+
+{
+  "Accion":3,
+  "UsuarioChatBot":"UsuarioPrueba",
+  "CodigoTramite":1004,
+  "TramiteID":"f64c393f0b3b4c0bb3a095c9e909fbe5",
+  "URLKafka":"66.70.179.213:9092",
+  "TopicoKafka":"tramitesResultados",
+  "UsuarioKafka":"--",
+  "ClaveKafka":"--",
+  "TokenInicio":"78B9BCBB6BB992D2787ABBAA",
+  "InstanciaTramite":-1,
+  "InstanciaStep":-1,
+  "Variables":[],
+  "Excepcion":""
+ }
+
+
+{
+   "accion":1,
+   "usuarioChatBot":"UsuarioPrueba",
+   "codigoTramite":1004,
+   "tramiteID":"f64c393f0b3b4c0bb3a095c9e909fbe5",
+   "instanciaTramite":2692,
+   "instanciaStep":588,
+   "excepcion":"",
+   "urlKafkaEE":"66.70.179.213:9092",
+   "topicoKafkaEE":
+   "DATOS_WAP",
+   "usuarioKafkaEE":"--",
+   "claveKafkaEE":"--",
+   "urlKafkaMotor":"66.70.179.213:9092",
+   "topicoKafkaMotor":"GPS_MotorPrueba",
+   "usuarioKafkaMotor":"--",
+   "claveKafkaMotor":"--",
+   "variables":[],
+   "descripci\u00F3n":"",
+   "variablesContexto":[],
+   "variablesPedidas":
+        [{"codigo":32,"label":"Ingrese su CUIT","listaQuery":["1","lubricantes","2","material"],"clase":4},
+	 {"codigo":33,"label":"Ingrese su edad","listaQuery":[],"clase":1},
+	 {"codigo":34,"label":"Defina su sexo (M: Masculino - F: Femenino)","listaQuery":[],"clase":4}
+	 ],
+    "textoBoton":"",
+    "link":""
+}
+
+
+
+
+public class CTramiteCN
   {
     public int Id_Tramite { get; set; } = -1;
     public string Nombre { get; set; } = "";
@@ -483,6 +790,37 @@ U: el 2
 
 Esto que estás construyendo ya es arquitectura de asistente serio, no un chatbot hobby. Muy buen trabajo 👏
 
+
+
+{
+  "urlKafkaRespuesta":"https://localhost:7198/api/EjecutorExterno/Loop",
+  "topicoKafkaRespuesta":"https://localhost:7198/api/EjecutorExterno/Loop",
+  "usuarioKafkaRespuesta":"--",
+  "claveKafkaRespuesta":"--",
+  "urlKafkaMotor":"66.70.179.213:9092",
+  "topicoKafkaMotor":"--",
+  "usuarioKafkaMotor":"",
+  "claveKafkaMotor":"--",
+  "usuarioChatBot":"093bd3e1be8247f6885683a30b08cdbb",
+  "tramiteID":"Prueba pedir datos WP",
+  "instanciaTramite":2686,
+  "instanciaStep":582,
+  "accion":1,
+  "descripci\u00F3n":"",
+  "variablesContexto":[],
+  "variablesPedidas":[
+	{"codigo":32,"label":"Ingrese su CUIT","listaQuery":[],"clase":4},
+	{"codigo":33,"label":"Ingrese su edad","listaQuery":[],"clase":1},
+	{"codigo":34,"label":"Defina su sexo (M: Masculino - F: Femenino)","listaQuery":[],"clase":4}
+	],
+"textoBoton":"",
+"link":"",
+"respuestas":[],
+"mensajeEx":""
+}
+
+
+
 {
   "URLKafka":"66.70.179.213:9092",
   "TopicoKafka":"Pedir_Datos",
@@ -499,7 +837,7 @@ Esto que estás construyendo ya es arquitectura de asistente serio, no un chatbo
   "VariablesPedidas":[
     {"codigo":33,"Tramite":1004,"orden":2,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Edad","label":"Ingrese su edad","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","clase":1,"PunterosNIIS":[]},
     {"codigo":34,"Tramite":1004,"Orden":3,"CodigoGlobal":-1,"CodigoAuxiliarExterno":"","CodigoAuxiliarExterno2":"","URLVariablesAuxiliares":"","Nombre":"Sexo","label":"Defina su sexo (M: Masculino - F: Femenino)","QueryLista":"","Ayuda":"","ValorPorDefecto":"","EsParteNombre":false,"EsVector":false,"Dinamica":false,"InicioTramite":false,"EsParteDeLaRespuesta":false,"ClaseConstante":-1,"Evaluacion":1,"CodigoRutina":-1,"VariableUsuario":-1,"Expresion":"","ProveedorNIIS":-1,"Mapeo":"","Entorno":"","clase":4,"PunterosNIIS":[]}
-  ],
+  ] ,
   "TextoBoton":"",
   "Link":"",
   'Excepcion': '',
@@ -511,6 +849,7 @@ Esto que estás construyendo ya es arquitectura de asistente serio, no un chatbo
     }
  ]
 }
+
 
 
 

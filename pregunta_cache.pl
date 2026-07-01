@@ -1,3 +1,5 @@
-pregunta_cache('libre deuda municipio de escobar', '19', '¿Podrías ingresar el CUIT del usuario, por favor?').
-pregunta_cache('certificado deudor moroso alimentario', '28', '¿Cuál es el CUIT del interesado?').
-pregunta_cache('emisión de certificado cuando no es deudor', '25', '**Pregunta:**\n\n*¡Hola! Para continuar con la emisión de su certificado, por favor ingrese su CUIT (número de identificación fiscal).*').
+pregunta_cache(81, '19', "¡Hola! Para continuar con el trámite del libre deuda del municipio de Escobar, ¿podrías, por favor, ingresar tu CUIT? Agradecemos tu colaboración.").
+pregunta_cache(83, '28', "Claro, aquí tienes una pregunta clara y amable para solicitar el dato:\n\n\"Por favor, ¿podrías proporcionarnos tu CUIT (Código Único de Identificación Tributaria) para continuar con el trámite del certificado de deudor moroso alimentario? ¡Gracias!\"").
+pregunta_cache(84, '32', "Claro, aquí tienes una pregunta clara y amable para solicitar el dato:\n\n\"Por favor, ingrese su CUIT en el siguiente campo para continuar con el trámite. ¡Gracias!\"").
+pregunta_cache(84, '33', "Claro, aquí tienes una sugerencia para la pregunta:\n\n\"Por favor, ¿podrías indicarnos tu edad? (Campo requerido)\"").
+pregunta_cache(84, '34', "Claro, aquí tienes una pregunta clara y amable para solicitar el dato:\n\n\"¿Podrías, por favor, definir tu sexo? Puedes elegir entre 'M' para Masculino o 'F' para Femenino. ¡Gracias!\"").

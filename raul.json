@@ -1,0 +1,45 @@
+{
+  "Accion":3,
+  "UsuarioChatBot":"UsuarioPrueba",
+  "CodigoTramite":1004,
+  "TramiteID":"f64c393f0b3b4c0bb3a095c9e909fbe5",
+  "URLKafka":"66.70.179.213:9092",
+  "TopicoKafka":"tramitesResultados",
+  "UsuarioKafka":"--",
+  "ClaveKafka":"--",
+  "TokenInicio":"78B9BCBB6BB992D2787ABBAA",
+  "InstanciaTramite":-1,
+  "InstanciaStep":-1,
+  "Variables":[],
+  "Excepcion":""
+},
+
+
+{
+   "accion":1,
+   "usuarioChatBot":"UsuarioPrueba",
+   "codigoTramite":1004,
+   "tramiteID":"f64c393f0b3b4c0bb3a095c9e909fbe5",
+   "instanciaTramite":2692,
+   "instanciaStep":588,
+   "excepcion":"",
+   "urlKafkaEE":"66.70.179.213:9092",
+   "topicoKafkaEE":
+   "DATOS_WAP",
+   "usuarioKafkaEE":"--",
+   "claveKafkaEE":"--",
+   "urlKafkaMotor":"66.70.179.213:9092",
+   "topicoKafkaMotor":"GPS_MotorPrueba",
+   "usuarioKafkaMotor":"--",
+   "claveKafkaMotor":"--",
+   "variables":[],
+   "descripci\u00F3n":"",
+   "variablesContexto":[],
+   "variablesPedidas":
+        [{"codigo":32,"label":"Ingrese su CUIT","listaQuery":[],"clase":4},
+	 {"codigo":33,"label":"Ingrese su edad","listaQuery":[],"clase":1},
+	 {"codigo":34,"label":"Defina su sexo (M: Masculino - F: Femenino)","listaQuery":[],"clase":4}
+	 ],
+    "textoBoton":"",
+    "link":""
+}

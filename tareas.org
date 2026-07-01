@@ -395,9 +395,11 @@ Responde SOLO en JSON, por ejemplo:
    
 ** ver ciclo de vida de las aserciones estado/5 tramite_en_espera y dato_tramite
 
-* TODO Token de autenticación
+* DONE Token de autenticación
    ver lens
 * TODO A2A agente a agente. MCP 
 * DONE usar persistencia con base de datos mas robusta.
 * DONE llm para confirmacion y poner en pausa 
-
+* TODO cambiar a todo asincronico
+* TODO revisar claves 
+* TODO probar dialogos

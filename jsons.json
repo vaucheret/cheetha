@@ -1,0 +1,261 @@
+tramites desde ril (https://thinknetc3.ddns.net/chita/apiril/api/TramitesRIL/ListarTramites)
+{
+  "tramites": [
+    {
+      "id_Tramite": 11,
+      "nombre": "Adhesión a boleta digital tasas municipales",
+      "descripcion": "Desde ese link podrás indicar tu correo electrónico para que tu boleta llegue a tu mail.",
+      "id_Equipo": 38,
+      "id_Area_Interna": 3,
+      "demora_Tiempo_Neto": 0,
+      "demora_Tiempo_Calendario": 0,
+      "link": "https://amip.escobar.gob.ar/boletadigitalescobar/servlet/com.adhesiones.wpnuevaadhesion",
+      "activo": 1,
+      "automatizado": false,
+      "codigoChita": -1
+    },
+    {
+      "id_Tramite": 83,
+      "nombre": "Certificado deudor moroso alimentario",
+      "descripcion": "Emisión de certificado de deudor moroso alimentario a partir del cuit del interesado.",
+      "id_Equipo": 38,
+      "id_Area_Interna": 3,
+      "demora_Tiempo_Neto": 0,
+      "demora_Tiempo_Calendario": 0,
+      "link": null,
+      "activo": 1,
+      "automatizado": true,
+      "codigoChita": 5
+    },
+
+           ... ]
+}
+
+uso
+
+nombre
+id_tramite
+descripcion
+automatizado
+codigoChita
+
+
+{
+  "simulacion": {
+    "codigoTramite": 11,
+    "nombre": "Adhesión a boleta digital tasas municipales",
+    "descripcion": "Desde ese link podrás indicar tu correo electrónico para que tu boleta llegue a tu mail.",
+    "equipo": "38",
+    "areaInterna": "Agencia Municipal de Ingresos Públicos (AMIP)",
+    "tiempoNetoHs": 0,
+    "tiempoTotalDias": 0,
+    "link": "https://amip.escobar.gob.ar/boletadigitalescobar/servlet/com.adhesiones.wpnuevaadhesion",
+    "requisitos": [
+      {
+        "descripcion": "Constancia de CUIT",
+        "expedidoPor": "ARCA - Nacional",
+        "equipo": "38",
+        "nivelOperabilidad": "Vía API/WebService",
+        "tramiteAsociado": null
+      },
+      {
+        "descripcion": "DNI",
+        "expedidoPor": "RENAPER - Nacional",
+        "equipo": "2391",
+        "nivelOperabilidad": "Vía API/WebService",
+        "tramiteAsociado": null
+      }
+    ]
+  },
+  "respuestaOK": true,
+  "msgErr": ""
+
+
+simulacion.requisitos
+descripcion
+expedidoPor
+
+
+tramites motor (https://thinknetc3.ddns.net/chita/apigps/api/Tramite/ListarConParametros?Ticket=qwqw)
+{
+  "tramites": [
+    {
+      "tramite": {
+        "codigo": 5,
+        "nombre": "Certificado deudor moroso alimentario",
+        "descripcion": "Emisión de certificado de deudor moroso alimentario a partir del cuit del interesado.",
+        "codigoEnCatalogo": -1,
+        "entidadResponsable": "",
+        "ejecutorOK": -1,
+        "ejecutorAborta": -1,
+        "rutinaHabilitado": -1,
+        "expresionHabilitado": "",
+        "flujograma": false,
+        "habilitado": true,
+        "rutinaValidez": -1,
+        "expresionValidez": "",
+        "asincronico": false,
+        "listaPalabras": "",
+        "loginNecesario": 0
+      },
+      "variablesEntrada": [
+        {
+          "codigo": 28,
+          "tramite": 5,
+          "orden": -1,
+          "codigoGlobal": -1,
+          "codigoAuxiliarExterno": "",
+          "codigoAuxiliarExterno2": "",
+          "urlVariablesAuxiliares": "",
+          "nombre": "cuit",
+          "label": "Indique el CUIT del interesado",
+          "queryLista": "",
+          "ayuda": "",
+          "valorPorDefecto": "0",
+          "esParteNombre": false,
+          "esVector": false,
+          "dinamica": false,
+          "inicioTramite": true,
+          "esParteDeLaRespuesta": false,
+          "claseConstante": -1,
+          "evaluacion": 1,
+          "codigoRutina": -1,
+          "variableUsuario": -1,
+          "expresion": "",
+          "proveedorNIIS": -1,
+          "mapeo": "",
+          "entorno": "",
+          "clase": 1,
+          "punterosNIIS": []
+        }
+
+          ...
+
+      ]
+    },
+
+   ...
+
+   ]
+   }
+
+uso
+
+codigo (que coincide con codigoChita )
+asincronico
+loginNecesario
+
+y de VariablesEntrada
+
+label
+codigo
+clase
+
+------> que mando por ahora al kafka
+
+{
+  topic: Topico,
+  mensaje: {
+             "UsuarioChatBot": userID,
+             "CodigoTramite": codigotramite, ( el mismo leido arriba codigochita)
+             "TramiteID":   tramiteID  (generado unico para la instancia)
+	     "URLKafka":"66.70.179.213:9092",
+             "TopicoKafka": topicodondeespera la respuesta,
+	     "UsuarioKafka":"",
+	     "ClaveKafka":"",
+	     "TokenInicio":Tokeninicio,
+	     "Variables": [
+	                    {
+			      "codigoVariable": codigo,
+			      "Valor": valor
+			    }
+	                  ...
+			  ]
+            }
+}	    
+
+		"Accion" :  3 (iniciar) o 1 (contin)
+		"UsuarioChatBot": userID,
+		"CodigoTramite": codigotramite, ( el mismo leido arriba codigochita)
+		"TramiteID":   tramiteID  (generado unico para la instancia)
+		"URLKafka":"66.70.179.213:9092",
+		"TopicoKafka": tramitesResultados
+		"UsuarioKafka":"",
+		"ClaveKafka":"",
+		"instanciaTramite":2692,
+		"instanciaStep":588,	
+		
+
+		son dos a
+		
+en accion3 	"66.70.179.213:9092"
+		tramites
+               
+		"URLKafka":"66.70.179.213:9092",
+		"TopicoKafka": tramitesResultados
+
+		
+
+en accion1      "urlKafkaEE":"66.70.179.213:9092",
+		"topicoKafkaEE":
+  
+		
+espero res	"urlKafkaMotor":"66.70.179.213:9092",
+		"topicoKafkaMotor":"GPS_MotorPrueba",
+		"usuarioKafkaMotor":"--",
+		"claveKafkaMotor":"--",
+
+
+
+		
+		
+<-------- esto que lo que recibo por ahora (sincronico resultado completado)
+
+
+{
+   "UsuarioChatBot" : usuario,
+   "CodigoTramite" : codigo chita,
+   "TramiteID" : codigo de instancia el tramite (como lo recibio)
+   "Excepcion" : explicación de error
+   "Variables" : [
+                   {
+		     "Mensaje" : mensaje,
+		     "Contenido" : link
+		    },
+                  ...
+		  ]
+		  
+}		  
+
+<-------- esto que lo que recibo por ahora (asincronico )
+
+{
+    "usuarioChatBot": usuario,
+    "CodigoTramite" :codigo chita
+  "tramiteID" : codigo de instancia,
+  "accion" : 1 (continuar con mas variables) 2 (ejecutar link) 4 (mostrar resultado)
+  "TopicoKafka" : topico donde esperar respuesta
+  "VariablesPedidas" : [
+  		        {
+                         "label" : nombre descripcion,
+			 "clase" : 1 (numero) 3 (fecha) 6 (boolenao) otro texto,
+			 "codigo" : codigo,
+			  ...
+			 }
+                       ...
+		       ],
+  "Excepcion" : motivo de error,
+   "Variables" : [
+                   {
+		     "Mensaje" : mensaje,
+		     "Contenido" : link
+		    },
+                  ...
+		  ]
+		  
+}		  
+
+		      
+
+			 
+               

@@ -10,9 +10,9 @@ digraph chat_assistant {
     confirmar_continuar_tramite [label="Confirmar continuar Trámite" shape=box fillcolor=magenta];
     confirmar_tramite [label="Confirmar Trámite" shape=box fillcolor=green];
     ejecutar_tramite [label="Ejecutar Trámite" shape=box fillcolor=red];
-    informar_tramite [label="Dar Información del Trámite" shape=box fillcolor=brown];
-    tramite_completado [label="Trámite Completado" shape=box fillcolor=yellow ];
-    preguntar_variable [label="Preguntar Variable" shape=box fillcolor=indigo];
+    informar_tramite [label="Dar Información del Trámite" shape=box fillcolor=brown,fontcolor=white];
+    tramite_completado [label="Trámite Completado" shape=box fillcolor=purple ];
+    preguntar_variable [label="Preguntar Variable" shape=box fillcolor=indigo,fontcolor=white];
     tramite_confirmado [label="Tramite Confirmado" shape=box];
     identificar_usuario [label="Identificar Usuario" shape=box];
     en_pausa [label="Tramite en Pausa" shape=box ];
@@ -45,16 +45,15 @@ digraph chat_assistant {
     ejecutar_tramite -> en_pausa [label="intencion -> pausar_tramite" fontcolor=red];
     ejecutar_tramite -> cancelado [label="intencion -> cancelar_tramite" fontcolor=red];
     ejecutar_tramite -> ejecutar_tramite [label="intencion -> continuar" fontcolor=red];
-    ejecutar_tramite -> tramite_completado [label="completo" fontcolor=yellow];
+    ejecutar_tramite -> tramite_completado [label="completo" fontcolor=purple];
     ejecutar_tramite -> preguntar_variable [label="pregunta" fontcolor=indigo ];
     preguntar_variable -> preguntar_variable [label="generar repregunta" fontcolor=indigo];
     preguntar_variable -> ejecutar_tramite [label="respuesta" fontcolor=indigo];
 
-    tramite_completado -> en_espera [label="asincronico" fontcolor=yellow] ;
+    tramite_completado -> en_espera [label="asincronico" fontcolor=purple] ;
 
-    handler_identificacion -> ejecutar_tramite [label="Identificado" fontcolor=black] ;
+    handler_identificacion -> ejecutar_tramite [label="Identificado (desocupado)" fontcolor=black] ;
+    handler_identificacion -> en_pausa [label="Ocupado va a Pendiente" fontcolor=black];
     handler_notificacion -> ejecutar_tramite [label="Desocupado Continua Asincrónico" fontcolor=black];
-        handler_notificacion -> en_pausa [label="Ocupado va a Pendiente" fontcolor=black];
-
-    
+    handler_notificacion -> en_pausa [label="Ocupado va a Pendiente" fontcolor=black];
 }

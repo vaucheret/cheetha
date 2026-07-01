@@ -1,8 +1,6 @@
 :- module(chatbot, [start_server/2, iniciar_chat/1]).
 
-:- use_module(library(http/thread_httpd)).
-:- use_module(library(http/http_dispatch)).
-:- use_module(library(http/http_json)).
+:- use_module(library(http/http_server)).
 :- use_module(library(http/http_client)).
 :- use_module(library(lists)).
 :- use_module(tramite_json).
@@ -14,6 +12,7 @@
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
 :- use_module(library(uuid),[uuid/1]).
+:- use_module(library(date), [parse_time/2]).
 
 
 
@@ -25,6 +24,8 @@
 
 % Configuración de proveedores LLM
 % provider_data(ProviderName, ModelName, EnvVarForKey, ApiUrl).
+
+provider_data(ollamalocal, "gemma4:latest",'OLLAMA_API_KEY','http://localhost:11434/v1/chat/completions').
 provider_data(openai, "gpt-4o-mini",'OPENAI_API_KEY','https://api.openai.com/v1/chat/completions').
 provider_data(deepseek, "deepseek/deepseek-chat-v3.1:free",'OPENROUTER_API_KEY','https://openrouter.ai/api/v1/chat/completions').
 provider_data(gemini, "google/gemini-2.0-flash-exp:free",'OPENROUTER_API_KEY','https://openrouter.ai/api/v1/chat/completetions').
@@ -39,8 +40,9 @@ set_provider(Provider) :-   % openai , deepseek , gemini or groq
 start_server(Provider,Port) :-
     set_provider(Provider),
     load_dot_env('.env'),
-    cargar_tramites,
+    cargar_tramite_desde_ril,
     cargar_tramites_from_url2,
+    cargar_tramites,
     cargar_preguntas_cache,
     init_db,
     http_server(http_dispatch, [port(Port), workers(6)]).
@@ -49,8 +51,9 @@ start_server(Provider,Port) :-
 iniciar_chat(Provider) :-
     set_provider(Provider),
     load_dot_env('.env'),
-    cargar_tramites,
+    cargar_tramite_desde_ril,
     cargar_tramites_from_url2,
+    cargar_tramites,
     cargar_preguntas_cache,
     init_db,
     chat_loop.
@@ -113,64 +116,110 @@ handle_identificacion(Request) :-
     %%%%%%% log %%%%%%%%
     format(user_output,"datos de identificacion recibidos ~w~n",[In]),
     UserID = In.identificacion,
-		format(user_output,"respuesta ~a~n",[In.verificado]),
-
-	  (   In.verificado == true
-	  ->
-	         format(user_output,"identificacion valida para usuario ~w~n",[UserID]),
-	         assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
-%		 retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
-		 retract_tramite_en_espera(UserID,T,TramiteID, Contexto),
-		 flujo_tramite(T, P),
-		    informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _,_),
-		    ejecutar_tramite(UserID,Tramite,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Tramite, Mensaje),
-		    enviar_mensaje_usuario(UserID, Mensaje),
-		    reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
-		;   reply_json_dict(_{ status: "error", message: "Identificación fallida" }, [encoding(utf8)])
-		).
+    format(user_output,"respuesta ~a~n",[In.verificado]),
+    
+    (   In.verificado == true
+    ->
+	format(user_output,"identificacion valida para usuario ~w~n",[UserID]),
+	assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
+	%		 retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
+	retract_tramite_en_espera(UserID,CodigoTramite,TramiteID, Contexto),
+	Contexto.auth_required = true,
+	tramite_codigo_nombre_descripcion_motor(CodigoTramite,Nombre,_,DictMotor),
+	flujo_tramite_codigo_pasos(DictMotor.codigochita, P),
+%	flujo_tramite(T, P),
+%	informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _,_),
+	( estado(UserID,_,_,_) ->
+	  assert_tramite_pendiente(UserID, TramiteID, Contexto, P)
+	;
+	  
+	  ejecutar_tramite(UserID,Contexto,P,
+			   "Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Nombre, Mensaje),
+	  enviar_mensaje_usuario(UserID, Mensaje)
+	),
+	reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
+    
+    ;   reply_json_dict(_{ status: "error", message: "Identificación fallida" }, [encoding(utf8)])
+    ).
 
 
 handle_notificacion(Request) :-
     http_read_json_dict(Request, In),
-    %%%%%%% log %%%%%%%%
-    %format(user_output,"entro notificacion ~n",[]),
-    %%%%%%% log %%%%%%%%
-		UserID = In.user_id,
-		TramiteID = In.tramite_id,
-			       Mensaje = In.resultado,
-					    %%%%%%% log %%%%%%%%
-					    %format(user_output,"con este mensaje ~w~n",[Mensaje]),
-					    %%%%%%% log %%%%%%%%
+    %%%%%% log %%%%%%%%
+    format(user_output,"entro notificacion ~n",[]),
+    %%%%%% log %%%%%%%%
+    UserID = In.user_id,
+    TramiteID = In.tramite_id,
+    Mensaje = In.resultado,
+    %%%%%% log %%%%%%%%
+    format(user_output,"con este mensaje ~w~n",[Mensaje]),
+    format(user_output,"con este usuario y tramite ~w ~w~n",[UserID,TramiteID]),
+
+    %%%%%% log %%%%%%%%
     (
-       atom_string(TramiteIDA,TramiteID),
-       retract_tramite_en_espera(UserID, Tramite, TramiteIDA,Contexto)
-		->
-		(    Mensaje.'Accion' == 1
-			     -> 
-				 cargar_variables_tramite_en_espera(Mensaje.'VariablesPedidas',[Paso|Pasos]),
-				 (   estado(UserID,_,_,_) -> assert_tramite_pendiente(UserID, TramiteIDA,Contexto.put(topic,Mensaje.'TopicoKafka'), [Paso|Pasos])
-				 ;   
-				 assert_estado(UserID, ejecutar_tramite,Contexto.put(topic,Mensaje.'TopicoKafka'), [Paso|Pasos]),
-				 generar_pregunta_chatgpt(Tramite, Paso, Pregunta),
-				 format(string(Texto),
-					"Hola, para continuar con el tramite «~w», necesitamos mas información. ~s", [Tramite, Pregunta])
-				 )
-			     ;
-			     (	 Mensaje.'Accion' == 2
-					 ->
-				 format(string(Texto),
-					"Hola, para completar el tramite «~w», necesitamos que te dirijas al siguiente link  ~s", [Tramite, Mensaje.'Link'])
-					 ;
-					 (    Mensaje.'Accion' == 4
-						      ->
-				 format(string(Texto),
-					"Hola, el tramite «~w», ha sido completado", [Tramite])
-					 ))),
-		enviar_mensaje_usuario(UserID, Texto),
-		reply_json_dict(_{ status: "ok" }, [encoding(utf8)])
-									  
-		;   reply_json_dict(_{ status: "error", message: "Trámite no encontrado" }, [encoding(utf8)])
-		).
+	atom_string(TramiteIDA,TramiteID),
+	format(user_output,"y con este Tramite ~a~n",[TramiteIDA]),
+	retract_tramite_en_espera(UserID, Tramite, TramiteIDA,Contexto)
+    ->
+	(    Mensaje.'Accion' == 1
+	->
+     	format(user_output,"aca entroe ~n",[]),
+	     ContextoNuevo = Contexto.put(topic,Mensaje.'TopicoKafkaEE')
+	                              .put(tramiteid,TramiteIDA)
+				      .put(url,Mensaje.'URLKafkaEE')
+				      .put(topicomotor,Mensaje.'TopicoKafkaMotor')
+				      .put(urlmotor,Mensaje.'URLKafkaMotor')
+				      .put(instanciatramite,Mensaje.'InstanciaTramite')
+	                              .put(instanciastep,Mensaje.'InstanciaStep')
+	                              .put(codigostep,Mensaje.'CodigoStep')
+	                              .put(accion,Mensaje.'Accion'),
+	          	format(user_output,"aca tambien ~d~n",[Tramite]),
+			cargar_variables_tramite_en_espera(Mensaje.'VariablesPedidas',[Paso|Pasos]),
+			format(user_output," por aca aca tambien ~d~n",[Tramite]),
+	     (   estado(UserID,_,_,_) ->
+		 assert_tramite_pendiente(UserID, TramiteIDA,ContextoNuevo, [Paso|Pasos])
+	     ;
+		 tramite_codigo_nombre_descripcion_motor(Tramite,Nombre,_,_),
+		 format(user_output,"aca fue ~d~n",[Tramite]),
+		 ejecutar_tramite(UserID,ContextoNuevo,[Paso|Pasos],
+			      "Hola, para continuar con el tramite «~w», necesitamos mas información. ~s",Nombre, Texto)
+		 
+		 % assert_estado(UserID, ejecutar_tramite,Contexto.put(topic,Mensaje.'TopicoKafka'), [Paso|Pasos]),
+		 % generar_pregunta_chatgpt(Tramite, Paso, Pregunta),
+		 % format(string(Texto),
+		 % 	"Hola, para continuar con el tramite «~w», necesitamos mas información. ~s", [Tramite, Pregunta])
+	     )
+	;
+	     (	 Mensaje.'Accion' == 2
+	     ->
+		 format(string(Texto),
+			"Hola, para completar el tramite «~w», necesitamos que te dirijas al siguiente link  ~s", [Tramite, Mensaje.'Link'])
+	     ;
+		 (    Mensaje.'Accion' == 4
+		 ->
+		      Excepcion = Mensaje.'Excepcion',
+		      (
+			  Excepcion \= "" ->
+			  format(string(Texto),"⚠ Ocurrió un error en el trámite: ~s",[Excepcion])
+		      ;
+			  Respuestas = Mensaje.'Variables',
+			  format(user_output,"con esta respuesta ~w~n",[Respuestas]),
+			  maplist(mensajecontenido, Respuestas, Strings),
+			  atomics_to_string(Strings,Texto)
+		      )
+		      
+%		      format(string(Texto),
+%			     "Hola, el tramite «~w», ha sido completado", [Tramite])
+		 ))
+	),
+	enviar_mensaje_usuario(UserID, Texto),
+	reply_json_dict(_{ status: "ok" }, [encoding(utf8)])
+    ;   reply_json_dict(_{ status: "error", message: "Trámite no encontrado" }, [encoding(utf8)])
+    ).
+
+mensajecontenido(M,S) :-
+    format(string(S),"~w descargar de  ~w ~n",[M.'Mensaje',M.'Contenido']).    
+
 
 enviar_mensaje_usuario(UserID, Texto) :-
     getenv('FLASKURL',FlaskURLLocal),
@@ -280,16 +329,17 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
     %%%%%%% log %%%%%%%%
 
     (
-        D.accion == "continuar",
+        D.accion == "retomar_pendiente",
           nonvar(D.tramite_id)
 	  %%%%%%% log %%%%%%%%
 	  %,format(user_output,"tramite a continuar ~w~n",[D.tramite_id])
 	  %%%%%%% log %%%%%%%%
-	  ->
+    ->
 	      %%%%%%% log %%%%%%%%
 	      %format(user_output,"continuar tramite ~w~n",[D.tramite_id]),
-	      %%%%%%% log %%%%%%%%
-	      atom_string(TramiteIDA,D.tramite_id),
+	%%%%%%% log %%%%%%%%
+	      normalizar_tramite_id(D.tramite_id, TramiteIDA),
+%	      atom_string(TramiteIDA,D.tramite_id),
               retract_tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos),
 
 	      %%%%%%% log %%%%%%%%
@@ -297,11 +347,13 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	      %%%%%%% log %%%%%%%%
 	      
               assert_estado(UserID, confirmar_continuar_tramite, CtxPend, Pasos),
-	      informacion_tramite(TramitePendiente, CtxPend.tramite, _,_, _,_),
+	      tramite_codigo_nombre_descripcion_motor(CtxPend.tramite, TramitePendiente,_,_),
+	      
+%	      informacion_tramite(TramitePendiente, CtxPend.tramite, _,_, _,_),
 	      format(string(Respuesta),
 	                      "~s Tramite a continuar:  «~w»", [D.respuesta, TramitePendiente])
-	  ;
-	  D.accion == "nuevo",
+    ;
+	  D.accion == "iniciar_nuevo",
 
 	    %%%%%%% log %%%%%%%%
 	    %format(user_output,"tramite nuevo a iniciar ~n",[]),
@@ -314,27 +366,29 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	    %format(user_output,"tramite nuevo a iniciar ~w~n",[D.tramite_nuevo]),
 	    %%%%%%% log %%%%%%%%
 
-	    informacion_tramite(TramiteA,TramiteCod,_,_,_,_),
+	    tramite_codigo_nombre_descripcion_motor(TramiteCod, TramiteA,_,_)
+
+%	    informacion_tramite(TramiteA,TramiteCod,_,_,_,_),
 
 	    %%%%%%% log %%%%%%%%n
 	    %format(user_output,"tramite nuevo a iniciar ~w~n",[TramiteA]),
 	    %%%%%%% log %%%%%%%%
 	    
-	    tramite_disponible(TramiteA)
+%	    tramite_disponible(TramiteA)
 
 	    %%%%%%% log %%%%%%%%
 	    %,format(user_output,"tramite nuevo disponible a iniciar ~w~n",[TramiteA])
 	    %%%%%%% log %%%%%%%%
 	    
-	    ->
+    ->
               format(string(Respuesta),
-	         "~s TRÁMITE: «~w»", [D.respuesta, TramiteA]),
+	         "~s TRÁMITE: «~w» ¿confirma?", [D.respuesta, TramiteA]),
 	      append(Hist1, [assistant-Respuesta], HistFinal),
               assert_estado(UserID, confirmar_tramite,
 			    _{tramite:TramiteCod, historia:HistFinal}, [])
-	    ;
+    ;
 	    D.accion == "preguntar"
-	      ->
+    ->
 	    % preguntar
 	    %%%%%%% log %%%%%%%%
 	    %format(user_output,"preguntar tramite ~n",[]),
@@ -342,13 +396,13 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 	    
 	    Respuesta = D.respuesta ,
 	    append(Hist1, [assistant-D.respuesta], HistFinal),	  
-			  assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
-  			  ;
-			  D.accion == "error"
-			    ->
-				Respuesta = D.respuesta ,
-	  		        HistFinal = [assistant-Respuesta],
-			  assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
+	    assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
+    ;
+	    D.accion == "error"
+    ->
+	    Respuesta = D.respuesta ,
+	    HistFinal = [assistant-Respuesta],
+	    assert_estado(UserID, buscar_tramite,_{historia:HistFinal}, [])
     ).
 
 
@@ -362,48 +416,63 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
     append(Contexto.historia, [user-Line], Hist1),
     resolver_intencion_pos_neg(Hist1, D),
     (	D.intent == "confirmar_si"
-	  ->
-	      informacion_tramite(T, Contexto.tramite, Asincronico,Auth, Descripcion,Aut),
-              % aca consultar automatizado
-	      (	  Aut.'Automatizado' == true ->
+    ->
+	T = Contexto.tramite,
+	tramite_codigo_nombre_descripcion_motor(T,Nombre,Descripcion,DictMotor),
+%	informacion_tramite(T, Contexto.tramite, Asincronico,Auth, Descripcion,Aut),
+	% aca consultar automatizado
+	(	  DictMotor.'Automatizado' == true ->
 		  uuid(TramiteID),
-		  flujo_tramite(T, P ),
+		  ContextoNuevo = Contexto.put(topic,"tramitesPrueba")
+	                              .put(tramiteid,TramiteID)
+				      .put(url,"66.70.179.213:9092")
+				      .put(topicomotor,"tramitesAsincronicos")
+				      .put(urlmotor,"66.70.179.213:9092")
+				      .put(instanciatramite,-1)
+                                      .put(instanciastep,-1)
+				      .put(codigostep,-1)
+				      .put(accion,3),
+		  flujo_tramite_codigo_pasos(DictMotor.codigochita, P),
+%		  flujo_tramite(T, P ),
 		  (
-		      identificado(Auth,UserID)
+		      identificado(DictMotor.loginNecesario,UserID)
 		  
 		  -> 
-		  ejecutar_tramite(UserID,T,Contexto.put(topic,"tramites").put(tramiteid,TramiteID),Asincronico,P,"Perfecto, iniciemos el trámite «~w». ~s",T, Respuesta)
+		      ejecutar_tramite(UserID,
+				       ContextoNuevo
+				      ,P,"Perfecto, iniciemos el trámite «~w». ~s",Nombre, Respuesta)
 		  ;
-		  %% log %%%%%%% log %%%%%%%%
-		  format(user_output,"usuario no identificado, se solicita identificacion para continuar ~w~n",[UserID]),
-		  %% log %%%%%%% log %%%%%%%%
-		  solicitar_identificacion(UserID,Resp),
-		  %% log %%%%%%% log %%%%%%%%
-		  format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
-		  %% log %%%%%%% log %%%%%%%%
-		  LinkDidComm = Resp.presentationContent,
-                  sub_atom(LinkDidComm,Before,_,_, "_oob="),
-		  Start is Before + 5,
-		  sub_atom(LinkDidComm,Start,_,0,OOB),
-		  getenv('FLASKURL',FlaskURL),
-		  atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
-%		  assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
-		  assert_tramite_en_espera(UserID,T,TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true))		     
+		      %% log %%%%%%% log %%%%%%%%
+		      format(user_output,"usuario no identificado, se solicita identificacion para continuar ~w~n",[UserID]),
+		      %% log %%%%%%% log %%%%%%%%
+		      solicitar_identificacion(UserID,Resp),
+		      %% log %%%%%%% log %%%%%%%%
+		      format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
+		      %% log %%%%%%% log %%%%%%%%
+		      LinkDidComm = Resp.presentationContent,
+		      sub_atom(LinkDidComm,Before,_,_, "_oob="),
+		      Start is Before + 5,
+		      sub_atom(LinkDidComm,Start,_,0,OOB),
+		      getenv('FLASKURL',FlaskURL),
+		      atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
+		      %		  assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
+		      assert_tramite_en_espera(UserID,T,TramiteID,
+					       ContextoNuevo.put(auth_required,true))
 		  )
-	      ;
-	      % no es automatizado, dar informacion y seguir con el dialog
-	      format(string(Respuesta),
-	             "Perfecto, ésta es la información para el trámite «~w»: ~n ~w ~n Instrucciones: ~w ~n  En que mas te puedo ayudar?",[T, Descripcion,Aut.'Descripcion'])
-	      )
-  ;
-       D.intent == "confirmar_no"
-	 ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
-		append(Contexto.historia, [user-Line], NuevaHistNo),
-		append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
-		assert_estado(UserID, buscar_tramite,
-			      _{historia:HistFinal}, [])
-	 ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-		assert_estado(UserID, confirmar_tramite, Contexto, [])
+	;
+		  % no es automatizado, dar informacion y seguir con el dialog %%%% Dar Información del Tramite %%%%
+		  format(string(Respuesta),
+			 "Perfecto, ésta es la información para el trámite «~w»: ~n ~w ~n Instrucciones: ~w ~n  En que mas te puedo ayudar?",[Nombre, Descripcion,DictMotor.'Descripcion'])
+	)
+    ;
+	D.intent == "confirmar_no"
+    ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
+	append(Contexto.historia, [user-Line], NuevaHistNo),
+	append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
+	assert_estado(UserID, buscar_tramite,
+		      _{historia:HistFinal}, [])
+    ;   Respuesta = "Perdón, ¿podés responder sí o no?",
+	assert_estado(UserID, confirmar_tramite, Contexto, [])
     ).
 
 % ——————————————————————————————————————
@@ -415,20 +484,22 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
     append(Contexto.historia, [user-Line], Hist1),
     resolver_intencion_pos_neg(Hist1, D),
     (	D.intent == "confirmar_si"
-	  ->
-              informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
-	      ejecutar_tramite(UserID,T,Contexto,Asincronico,P,
-			     "Perfecto, continuamos con el trámite «~w». ~s",
-			     T, Respuesta)
+    ->
+	T = Contexto.tramite,
+	tramite_codigo_nombre_descripcion_motor(T,Nombre,_,_),
+%	informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
+	ejecutar_tramite(UserID,Contexto,P,
+			 "Perfecto, continuamos con el trámite «~w». ~s",
+			 Nombre, Respuesta)
     ;   D.intent == "confirmar_no"
-	  ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
-	      append(Contexto.historia, [user-Line], NuevaHistNo),
-	      append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
-              assert_estado(UserID, buscar_tramite,
-			    _{historia:HistFinal}, []),
-	      assert_tramite_pendiente(UserID, Contexto.tramiteid, Contexto, P)
-	  ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-              assert_estado(UserID, confirmar_tramite, Contexto, [])
+    ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
+	append(Contexto.historia, [user-Line], NuevaHistNo),
+	append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
+	assert_estado(UserID, buscar_tramite,
+		      _{historia:HistFinal}, []),
+	assert_tramite_pendiente(UserID, Contexto.tramiteid, Contexto, P)
+    ;   Respuesta = "Perdón, ¿podés responder sí o no?",
+	assert_estado(UserID, confirmar_continuar_tramite, Contexto, [])
     ).
 
 % ——————————————————————————————————————
@@ -442,34 +513,35 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     resolver_intencion_cont(Hist1, D),
     (
 	D.intent == "pausar_tramite"
-	  -> 
-	      TramiteID = Contexto.tramiteid,
-	      assert_tramite_pendiente(UserID, TramiteID, Contexto, Pasos),
-	      Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
-	   ;
+    -> 
+	TramiteID = Contexto.tramiteid,
+	assert_tramite_pendiente(UserID, TramiteID, Contexto, Pasos),
+	Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
+    ;
         D.intent == "cancelar_tramite"
-	  ->
-	      Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
-	  ;
-	  % si es continuar o ambiguo, seguimos con el trámite
-	  assert_estado(UserID, ejecutar_tramite, Contexto, Pasos),
-	  fail
-		).
+    ->
+	Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
+    ;
+	% si es continuar o ambiguo, seguimos con el trámite
+	assert_estado(UserID, ejecutar_tramite, Contexto, Pasos),
+	fail
+    ).
 
 
 procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     retract_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes]),
     string_codes(Line,LineS),
-    informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
-    Paso = paso(Id,_,Tipo,_),
-        (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
-        ->  assert_dato_tramite(UserID,T,Id,Line1),
-	    ejecutar_tramite(UserID,T,Contexto,Asincronico,Restantes,
-			     "~w~s",'',Respuesta)
-        ;   % Respuesta inválida → repreguntar
-            generar_repregunta_chatgpt(T,Paso,Respuesta),
-            assert_estado(UserID, ejecutar_tramite,
-                           Contexto, [Paso|Restantes])
+    T = Contexto.tramite,
+    tramite_codigo_nombre_descripcion_motor(T,_,_,DictMotor),
+%    informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
+    Paso = paso(Id,_,_,Tipo,_),
+    (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
+    ->  assert_dato_tramite(UserID,DictMotor.codigochita,Contexto.tramiteid,Id,Line1),
+	ejecutar_tramite(UserID,Contexto,Restantes,"~w~s",'',Respuesta)
+    ;   % Respuesta inválida → repreguntar
+	generar_repregunta_chatgpt(Contexto,Paso,Respuesta),
+	assert_estado(UserID, ejecutar_tramite,
+		      Contexto, [Paso|Restantes])
     ).
 
 
@@ -513,31 +585,46 @@ solicitar_identificacion(UserID,Dict) :-
 %    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
 
 
-ejecutar_tramite(UserID,T,Contexto,Asincronico,Pasos,Caption,Tram,Respuesta) :-
+ejecutar_tramite(UserID,Contexto,Pasos,Caption,Tram,Respuesta) :-
     ( Pasos = [Prox|_]
-    ->  generar_pregunta_chatgpt(T,Prox,Pregunta),
+    ->  generar_pregunta_chatgpt(Contexto,Prox,Pregunta),
 	format(string(Respuesta),Caption,[Tram, Pregunta]),
 	assert_estado(UserID, ejecutar_tramite,Contexto,Pasos)
     ;
-    tramite_completado(UserID,T,Contexto,Asincronico,Respuesta)
+    tramite_completado(UserID,Contexto,Respuesta)
     ).
 
-tramite_completado(UserID,T,Contexto,Asincronico,Respuesta) :-
-	        guardar_preguntas_cache,
-	        TramiteID = Contexto.tramiteid,
-	        (   usuario_identificado(UserID,Token, _) -> true ; Token = "" ),
-		(   Asincronico == true
-		->
-		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesAsincronicos",Token),
-		MensajeKafka = "Tu trámite se está procesando,  te avisaremos cuando esté listo.",
-		assert_tramite_en_espera(UserID,T,TramiteID,Contexto)
-		;
-		exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesResultados",Token),
-                esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka)
-		),
-                format(string(Respuesta),
-                       "~s\n\n¿En qué otro trámite te puedo ayudar?",
-                       [MensajeKafka]).
+tramite_completado(UserID,Contexto,Respuesta) :-
+    guardar_preguntas_cache,
+    Tramite = Contexto.tramite,
+    tramite_codigo_nombre_descripcion_motor(Tramite,_,_,DictMotor),
+    T = DictMotor.codigochita,
+    Asincronico = DictMotor.asincronico,
+    TramiteID = Contexto.tramiteid,
+    (   usuario_identificado(UserID,Token, _) -> true ; Token = "" ),
+    ( Asincronico == true
+    ->
+      Respuesta = "Tu trámite se está procesando,  te avisaremos cuando esté listo.\n\n¿En qué otro trámite te puedo ayudar?"
+    ;
+      Respuesta = "Tramite en proceso\n"
+    ),
+    format(user_output,"antes de exportar ~w~n",[UserID]),
+    exportar_datos_tramite_kafka(UserID,T,TramiteID,Token,Contexto),
+	    assert_tramite_en_espera(UserID,Tramite,TramiteID,Contexto).
+
+
+    % (   Asincronico == true
+    % ->
+    % 	exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesAsincronicos",Token),
+    % 	MensajeKafka = "Tu trámite se está procesando,  te avisaremos cuando esté listo.",
+    % 	assert_tramite_en_espera(UserID,Tramite,TramiteID,Contexto)
+    % ;
+    % 	exportar_datos_tramite_kafka(UserID,T,TramiteID,Contexto.topic,"tramitesResultados",Token),
+    % 	esperar_respuesta_kafka(UserID,T,TramiteID,MensajeKafka)
+    % ),
+    % format(string(Respuesta),
+    % 	   "~s\n\n¿En qué otro trámite te puedo ayudar?",
+    % 	   [MensajeKafka]).
 
 
 
@@ -549,6 +636,19 @@ tramite_completado(UserID,T,Contexto,Asincronico,Respuesta) :-
 % ——————————————————————————————————————
 % Detección flexible de trámite por LLM
 % ——————————————————————————————————————
+
+normalizar_tramite_id(Dato,Codigo) :-
+    atom(Dato),
+    !,
+    Codigo = Dato.
+
+normalizar_tramite_id(Dato,Codigo) :-
+    number(Dato),
+    catch(atom_number(Codigo,Dato), _, fail).
+
+normalizar_tramite_id(Dato,Codigo) :-
+    string(Dato),
+    catch(atom_string(Codigo,Dato), _, fail).
 
 normalizar_codigo_tramite(Dato, Codigo) :-
     number(Dato),
@@ -569,7 +669,8 @@ pendientes_usuario(UserID, Pendientes) :-
         _{tramite_id:ID, tramite:T},
 	(   
             tramite_pendiente(UserID, ID, Contexto, _),
-	    informacion_tramite(T, Contexto.tramite, _Asincronico,_Auth, _,_)
+	    tramite_codigo_nombre_descripcion_motor(Contexto.tramite,T,_,_)
+%	    informacion_tramite(T, Contexto.tramite, _Asincronico,_Auth, _,_)
 	    ),
         Pendientes
     ).
@@ -582,42 +683,53 @@ resolver_intencion_llm( Historia, Pendientes, Decision) :-
 	   "Eres un asistente para trámites. Debes identificar la intención del usuario respecto a los trámites que puede realizar. Si quiere continuar con un trámite pendiente, seleccionar uno de ellos. Si quiere iniciar un trámite nuevo, seleccionar uno de los trámites disponibles. Si no está claro que quiere hacer, preguntar para determinar su intención posiblemente dando una lista de tramites pendientes o disponibles.
 
 
-Tiene estos trámites pendientes:
+Tiene estos trámites PENDIENTES:
 ~w
 
-y tiene estos Trámites disponibles para iniciar uno nuevo:
+y tiene estos Trámites DISPONIBLES para iniciar uno nuevo:
 (lista de tramites con codigo,nombre y descripcion ~s).
+
+
+la accion \"retomar_pendiente\" se aplica SOLO cuando se proponga  un trámite de la lista PENDIENTES, entonces se debe indicar el \"tramite_id\" del trámite pendiente a continuar, nunca con un tramite de la lista DISPONIBLES.
+
+la accion \"iniciar_nuevo\" se aplica cuando se proponga un trámite de la lista DISPONIBLES, entonces se debe indicar el codigo  \"tramite_nuevo\"  del tramite a iniciar, nunca con un tramite de la lista PENDIENTES.
+
+la accion \"preguntar\" se aplica cuando no se pudo determinar qué tramite proponer (ya sea pendiente o disponible) que el usuario quiere realizar, entonces se deja null el tramite_id y null el tramite_nuevo y se responde con una pregunta para indagar al usuario y poder determinar cuál es el trámite al que se refiere.
+
+si la lista de tramites pendientes es vacía, no hacer referencia a los tramites pendientes en la respuesta, si es distinta de vacia, sugerir al usuario que puede querer continuar con alguno de ellos primero antes de proponer uno nuevo.
 
 
 Decidí UNA sola opción de accion y respondé SOLO en JSON:
 
 {
-  \"accion\": \"continuar\" | \"nuevo\" | \"preguntar\",
+  \"accion\": \"retomar_pendiente\" | \"iniciar_nuevo\" | \"preguntar\",
   \"tramite_id\": \"uuid\" | null,
   \"tramite_nuevo\": \"codigo\" | null,
-  \"respuesta\": \"texto breve para confirmar si el tramite fue detectado o una  nueva pregunta para indagar al usuario cual es el tramite a realizar o para confirmar si seleccionó uno de los pendientes\"
-}",
-[ Pendientes, Tramites]),
-%    append(Historia, [user-Prompt], H2),
+  \"respuesta\": \"texto breve para confirmar si el tramite fue detectado o una  nueva pregunta para indagar al usuario cual es el tramite a realizar o para confirmar el propuesto\"
+}
+
+",
+	   [ Pendientes, Tramites]),
+    %    append(Historia, [user-Prompt], H2),
     %    H2 = [user-Prompt],
     H2 = [system-Prompt|Historia],
     (
 	call_llm_with_context(H2, R) ->
 	(
 	    is_json_valid(R) ->
-	       
-		atom_json_dict(R, Decision, [])
-	    ;	
-	    Decision = _{accion:"preguntar",tramite_id:null, respuesta:R}
 	    
+	    atom_json_dict(R, Decision, [])
+	;	
+	    Decision = _{accion:"preguntar",tramite_id:null, respuesta:R}
+	
 	)
-	%% (
-	%%     atom_json_dict(R, Decision, []) -> true
-	%% ;
-	%% Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
-	%% )
+    %% (
+    %%     atom_json_dict(R, Decision, []) -> true
+    %% ;
+    %% Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
+    %% )
     ;
-    Decision = _{accion:"error",tramite_id:null, respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
+	Decision = _{accion:"error",tramite_id:null, respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
 
     ).
 
@@ -747,26 +859,24 @@ to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
     atom_string(Role, SRole).
 
 
-%% extract_gpt_response(json(L), Content) :-
-%%     member(choices=[json(Choices)],L),
-%%     member(message=json(Message),Choices),
-%%     member(content=Content,Message).
-
 
 % ——————————————————————————————————————
 % Generación de pregunta desde flujo
 % ——————————————————————————————————————
 
-generar_pregunta_chatgpt(Tramite,Paso,Pregunta) :-
-    Paso = paso(Codigo, Caption, Tipo, Opciones),
+generar_pregunta_chatgpt(Contexto,Paso,Pregunta) :-
+    Tramite = Contexto.tramite,
+    tramite_codigo_nombre_descripcion_motor(Tramite,Nombre,_,_),
+    Paso = paso(Codigo,NombreCampo, Caption, Tipo, Opciones),
     (
 	pregunta_cache(Tramite,Codigo, Pregunta) -> true
     ;
     (	Opciones \== [] -> format(string(Texto)," Por favor incluir en la pregunta estas opciones de respuesta ~w",[Opciones]) ; Texto = "" ),
     atomic_list_concat([
         "Genera una pregunta clara y amable para pedir al usuario un dato dentro del trámite:",
-        Tramite, ".\n\n",
+        Nombre, ".\n\n",
         "Código del campo: ", Codigo, "\n",
+	"Nombre del campo: ", NombreCampo, "\n",
         "Tipo de dato: ", Tipo, "\n",
         "Descripción o título: ", Caption, "\n\n",
         "Pregunta:", Texto
@@ -783,13 +893,16 @@ generar_pregunta_chatgpt(Tramite,Paso,Pregunta) :-
     )
     ).
 
-generar_repregunta_chatgpt(Tramite,Paso,Pregunta) :-
-    Paso = paso(Codigo, Caption, Tipo, Opciones),
-    (	Opciones \== [] -> format(string(Texto)," Por favor incluir en la pregunta estas opciones de respuesta ~w",[Opciones]) ; Texto = "" ),
+generar_repregunta_chatgpt(Contexto,Paso,Pregunta) :-
+    Tramite = Contexto.tramite,
+    tramite_codigo_nombre_descripcion_motor(Tramite,Nombre,_,_),
+    Paso = paso(Codigo, NombreCampo,Caption, Tipo, Opciones),
+    (	Opciones \== [] -> format(string(Texto)," Por favor incluir en la pregunta estas opciones de respuesta ~w, opcion(X,Y) significa si el usuario selecciona Y responder X",[Opciones]) ; Texto = "" ),
     atomic_list_concat([
         "Por favor reformular una pregunta clara y amable para pedir al usuario un dato dentro del trámite:",
-        Tramite, ".\n\n",
+        Nombre, ".\n\n",
         "Código del campo: ", Codigo, "\n",
+	"Nombre del campo: ", NombreCampo, "\n",
         "Tipo de dato: ", Tipo, "\n",
         "Descripción o título: ", Caption, "\n\n",
         "Pregunta:", Texto , "Enfatizando que la respuesta debe ser del tipo correcto."
