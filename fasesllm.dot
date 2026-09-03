@@ -14,6 +14,7 @@ digraph chat_assistant {
     tramite_completado [label="Trámite Completado" shape=box fillcolor=purple ];
     preguntar_variable [label="Preguntar Variable" shape=box fillcolor=indigo,fontcolor=white];
     tramite_confirmado [label="Tramite Confirmado" shape=box];
+    elegir_modo_tramite [label="Elegir Modo Trámite\n(desc o ejecutar)" shape=box fillcolor=orange];
     identificar_usuario [label="Identificar Usuario" shape=box];
     en_pausa [label="Tramite en Pausa" shape=box ];
     en_espera [label="Tramite en Espera (Asinc o No Ident)" ];
@@ -28,9 +29,14 @@ digraph chat_assistant {
     
     confirmar_tramite -> tramite_confirmado [label="intencion -> confirmar_si" fontcolor=green];
 
-    tramite_confirmado -> ejecutar_tramite [label="Automatizado / Identificado" fontcolor=red];
-    tramite_confirmado -> identificar_usuario [label="No Identificado" fontcolor=gray ];
+    tramite_confirmado -> elegir_modo_tramite [label="Automatizado" fontcolor=orange];
     tramite_confirmado -> informar_tramite [label="No Automatizado" fontcolor=black ];
+
+    elegir_modo_tramite -> informar_tramite [label="intencion -> describir\n(muestra info, ¿ejecutar ahora?)" fontcolor=orange];
+    elegir_modo_tramite -> elegir_modo_tramite [label="intencion -> ambigua" fontcolor=orange];
+    elegir_modo_tramite -> ejecutar_tramite [label="intencion -> ejecutar / confirmar_si (post_desc) · Identificado" fontcolor=red];
+    elegir_modo_tramite -> identificar_usuario [label="intencion -> ejecutar / confirmar_si (post_desc) · No Identificado" fontcolor=gray];
+    elegir_modo_tramite -> buscar_tramite [label="intencion -> confirmar_no (post_desc)" fontcolor=orange];
 
     identificar_usuario -> en_espera [label="Esperar Identificacion" fontcolor=gray ];
     informar_tramite -> informar_tramite [label="intencion -> seguir_informando" fontcolor=brown ];

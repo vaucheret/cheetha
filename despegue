@@ -14,3 +14,7 @@ start_server(openai,7000)
 flask_cloud 8000 -> 7000
 flask_cloud 8080 -> 7080
 ngrok http http://localhost:7080
+
+
+ssh -R 80:localhost:8001 serveo.net
+ngrok http http://localhost:8001

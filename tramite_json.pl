@@ -1,17 +1,18 @@
 :- module(tramite_json, [
-	      cargar_tramite_desde_ril/0,
-	      cargar_tramites_from_url2/0,
-	      cargar_tramites/0,
-	      cargar_variables_tramite_en_espera/2,
-	      tramite_codigo_nombre_descripcion_motor/4,
-	      flujo_tramite_codigo_pasos/2,
-	      % tramite_disponible/1,
-	      % flujo_tramite/2,
-	      % informacion_tramite/6,
-	      exportar_datos_tramite_kafka/5,
-%	      esperar_respuesta_kafka/4,
-	      tramites_disponibles/1
-	  ]).
+			    cargar_tramite_desde_ril/0,
+			    cargar_tramites_from_url2/0,
+			    cargar_tramites/0,
+			    cargar_variables_tramite_en_espera/2,
+			    tramite_codigo_nombre_descripcion_motor/4,
+			    flujo_tramite_codigo_pasos/2,
+			    % tramite_disponible/1,
+			    % flujo_tramite/2,
+			    % informacion_tramite/6,
+			    exportar_datos_tramite_kafka/5,
+			    %	      esperar_respuesta_kafka/4,
+			    tramites_disponibles/1,
+			    categoria_de_nombre/2
+			]).
 
 
 /** <module> Libreria de Tramites
@@ -55,7 +56,9 @@ obtener_token_valido(Token) :-
     ).
 
 obtener_nuevo_token(Token) :-
-    URL = 'https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21',
+    (   getenv('GPS_TOKEN_URL', URL) -> true
+    ;   URL = 'https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21'
+    ),
     catch(
         (   http_get(URL, Reply, [request_header('Content-Type'='application/json'), status_code(Code)]),
             Code == 200,
@@ -79,8 +82,23 @@ obtener_nuevo_token(Token) :-
     ).
 
 tramites_disponibles(Tramites) :-
-    findall(_{codigo:C,nombre:ST,descripcion:D}, (tramite_codigo_nombre_descripcion_motor(C,T,D,_),atom_string(T,ST)), L),
-    atom_json_dict(Tramites, _{tramites:L},[as(string)]).
+    findall(_{codigo:C, nombre:ST, entidad:E, categoria:Cat},
+            (tramite_codigo_nombre_descripcion_motor(C,T,_,DictMotor),
+             atom_string(T,ST),
+             E = DictMotor.get(entidad, ""),
+             categoria_de_nombre(T, Cat)),
+            L),
+    atom_json_dict(Tramites, _{tramites:L}, [as(string)]).
+
+categoria_de_nombre(Nombre, "certificado") :- sub_atom(Nombre, 0, _, _, "certificado"), !.
+categoria_de_nombre(Nombre, "duplicado") :- sub_atom(Nombre, 0, _, _, "duplicado"), !.
+categoria_de_nombre(Nombre, "renovación") :- sub_atom(Nombre, 0, _, _, "renovación"), !.
+categoria_de_nombre(Nombre, "inscripción") :- sub_atom(Nombre, 0, _, _, "inscripción"), !.
+categoria_de_nombre(Nombre, "licencia") :- sub_atom(Nombre, 0, _, _, "licencia"), !.
+categoria_de_nombre(Nombre, "permiso") :- sub_atom(Nombre, 0, _, _, "permiso"), !.
+categoria_de_nombre(Nombre, "libre_deuda") :- sub_atom(Nombre, 0, _, _, "libre deuda"), !.
+categoria_de_nombre(Nombre, "credencial") :- sub_atom(Nombre, 0, _, _, "crear credencial"), !.
+categoria_de_nombre(_, "otro").
 
 %!  directorio_tramites(Directory) is det.
 %
@@ -102,9 +120,10 @@ cargar_tramite_desde_json(A) :-
     json_read_dict(Stream, Dict),
     close(Stream),
     string_lower(Dict.'Tramite',NString),atom_string(Nombre,NString),
-    assertz(tramite_codigo_nombre_descripcion_motor(Dict.'CodigoInterno',Nombre,Dict.'Identificacion',_{'Automatizado':false,'Descripcion':Dict.'descripcion',asincronico:Dict.'asincronico',loginNecesario:Dict.'loginNecesario'})),
-%    assertz(tramite_disponible(Nombre)),
-%    assertz(informacion_tramite(Nombre,Dict.'CodigoInterno',Dict.'asincronico',Dict.'loginNecesario',Dict.'Identificacion',_{'Descripcion':Dict.'descripcion', 'Automatizado':false})),
+    categoria_de_nombre(Nombre, Cat),
+    assertz(tramite_codigo_nombre_descripcion_motor(Dict.'CodigoInterno',Nombre,Dict.'Identificacion',_{'Automatizado':false,'Descripcion':Dict.'descripcion',asincronico:Dict.'asincronico',loginNecesario:Dict.'loginNecesario',entidad:"",categoria:Cat})),
+    %    assertz(tramite_disponible(Nombre)),
+    %    assertz(informacion_tramite(Nombre,Dict.'CodigoInterno',Dict.'asincronico',Dict.'loginNecesario',Dict.'Identificacion',_{'Descripcion':Dict.'descripcion', 'Automatizado':false})),
     maplist(variable_a_paso, Dict.'Variables',Pasos),
     assertz(flujo_tramite_codigo_pasos(Dict.'CodigoInterno',Pasos)).
 %    assertz(flujo_tramite(Nombre,Pasos)).
@@ -122,74 +141,83 @@ cargar_tramites :-
 
 
 cargar_tramite_desde_ril :-
-    URL = 'https://thinknetc3.ddns.net/chitav2/apiril/api/TramitesRIL/ListarTramites',
+    (   getenv('RIL_TRAMITES_URL', URL) -> true
+    ;   URL = 'https://thinknetc3.ddns.net/chitaV2/APIRIL/api/TramitesRIL/ListarTramitesSimulados'
+    ),
+    %    URL = 'https://thinknetc3.ddns.net/chitav2/apiril/api/TramitesRIL/ListarTramites',
     (
-				catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
-				Code == 200
+	catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),status_code(Code)]),_, fail),
+	Code == 200
     ->
-    atom_json_term(Atom,Reply,[as(string)]),
-    atom_json_dict(Atom, Dict, []),
-    maplist(cargar_tramite_nuevo_desde_JsonRil,Dict.tramites)
+	atom_json_term(Atom,Reply,[as(string)]),
+	atom_json_dict(Atom, Dict, []),
+	maplist(cargar_tramite_nuevo_desde_JsonRil,Dict.tramites)
     ;   format("Error al descargar el archivo JSON desde la URL.~n")
     ).
 
 
 
 cargar_tramites_from_url2 :-
-    URL = 'https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw',
+    (   getenv('GPS_TRAMITES_URL', URL) -> true
+    ;   URL = 'https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw'
+    ),
     (
-	  obtener_token_valido(Token),
-	  catch(http_get(URL, Reply, [
-					 request_header('Content-Type'='application/json'),
-					 authorization(bearer(Token)),
-					 status_code(Code)
-				     ]),_, fail),
-				Code == 200
-		->
-		atom_json_term(Atom,Reply,[as(string)]),
-		atom_json_dict(Atom, Dict, []),
-		maplist(cargar_tramite_nuevo_desde_Json2,Dict.tramites)
-		;   format("Error al descargar el archivo JSON desde la URL.~n")
-		).
-    
-cargar_tramite_nuevo_desde_JsonRil(Diction) :-
-    string_lower(Diction.'nombre',NString),atom_string(Nombre,NString),
-%%    assertz(tramite_disponible(Nombre)),
-    format(string(URL),"https://thinknetc3.ddns.net/chitav2/apiril/api/TramitesRIL/SimularTramite?Codigo=~w",[Diction.'id_Tramite']),
-    (
-	catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),
-				    status_code(Code)]),_, fail),
+	obtener_token_valido(Token),
+	catch(http_get(URL, Reply, [
+				       request_header('Content-Type'='application/json'),
+				       authorization(bearer(Token)),
+				       status_code(Code)
+				   ]),_, fail),
 	Code == 200
     ->
 	atom_json_term(Atom,Reply,[as(string)]),
 	atom_json_dict(Atom, Dict, []),
-	phrase(("\n Requisitos: \n",variable_a_string(Dict.simulacion.requisitos)),Req),
-	string_codes(Requisitos,Req)
+	maplist(cargar_tramite_nuevo_desde_Json2,Dict.tramites)
     ;   format("Error al descargar el archivo JSON desde la URL.~n")
-    ),
-
-    assertz(tramite_codigo_nombre_descripcion_motor(Diction.'id_Tramite',Nombre,Diction.'descripcion',_{'codigochita':Diction.'codigoChita','Automatizado':Diction.'automatizado','Descripcion':Requisitos})).
+    ).
+    
+cargar_tramite_nuevo_desde_JsonRil(Dictionbase) :-
+    Diction = Dictionbase.'definicion',
+    string_lower(Diction.'nombre',NString),atom_string(Nombre,NString),
+    %%    assertz(tramite_disponible(Nombre)),
+    % format(string(URL),"https://thinknetc3.ddns.net/chitav2/apiril/api/TramitesRIL/SimularTramite?Codigo=~w",[Diction.'id_Tramite']),
+    % (
+    % 	catch(http_get(URL, Reply, [request_header('Content-Type'='application/json'),
+    % 				    status_code(Code)]),_, fail),
+    % 	Code == 200
+    % ->
+    % 	atom_json_term(Atom,Reply,[as(string)]),
+    % 	atom_json_dict(Atom, Dict, []),
+    phrase(("\n Requisitos: \n",variable_a_string(Dictionbase.requisitos)),Req),
+    string_codes(Requisitos,Req),
+    % ;   format("Error al descargar el archivo JSON desde la URL.~n")
+    % ),
+    Descripcion = Diction.descripcion,
+    categoria_de_nombre(Nombre, Cat),
+    E = Dictionbase.get(entidad, ""),
+    AI = Dictionbase.get(areaInterna, ""),
+    assertz(tramite_codigo_nombre_descripcion_motor(Diction.'id_Tramite',Nombre,Descripcion,_{'codigochita':Diction.'codigoChita','Automatizado':Diction.'automatizado','Descripcion':Requisitos,entidad:E,areaInterna:AI,categoria:Cat})).
 %%  assertz(informacion_tramite(Nombre,Diction.'id_Tramite',false,0,Diction.'descripcion',_{'Descripcion':Requisitos,'Automatizado':false})).
 	
 
 
 cargar_tramite_nuevo_desde_Json2(Diction) :-
-                Dict = Diction.get('tramite'),
-		Variables = Diction.get('variablesEntrada',[]),   
-%		string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
-		C = Dict.'codigoRIL',
-		(
-		    C == -1
-		-> true
-		;
-%%		assertz(tramite_disponible(Nombre)),
-		%%		assertz(informacion_tramite(Nombre,Dict.'codigo',Dict.'asincronico',Dict.'loginNecesario',Dict.'descripcion',_{'Automatizado':true})),
-		retract(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info)),
-		Info.codigochita = Dict.'codigo',
-	        assertz(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info.put(asincronico,Dict.'asincronico').put(loginNecesario,Dict.'loginNecesario'))),	
-		maplist(variable_a_paso2, Variables,Pasos),
-		assertz(flujo_tramite_codigo_pasos(Dict.'codigo',Pasos))
-		).
+    Dict = Diction.get('tramite'),
+    Variables = Diction.get('variablesEntrada',[]),   
+    %		string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
+    C = Dict.'codigoRIL',
+    (
+	C == -1
+    -> true
+    ;
+	%%		assertz(tramite_disponible(Nombre)),
+	%%		assertz(informacion_tramite(Nombre,Dict.'codigo',Dict.'asincronico',Dict.'loginNecesario',Dict.'descripcion',_{'Automatizado':true})),
+	retract(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info)),
+	Info.codigochita = Dict.'codigo',
+	assertz(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info.put(asincronico,Dict.'asincronico').put(loginNecesario,Dict.'loginNecesario'))),	
+	maplist(variable_a_paso2, Variables,Pasos),
+	assertz(flujo_tramite_codigo_pasos(Dict.'codigo',Pasos))
+    ).
 
 
 variable_a_string([]) --> [].
@@ -201,12 +229,12 @@ variable_a_string([PDict|Rest]) -->
 variable_a_paso3(PDict,paso(Codigo, "",PDict.'label',Tipo,Opciones)) :-
     atom_string(Codigo,PDict.'codigo'),
     (	PDict.'clase' == 1 -> Tipo = "numero"
-	      ;
-	      (	  PDict.'clase' == 3 -> Tipo = "fecha"
-			;
-			(   PDict.'clase' == 6 -> Tipo = "booleano"
-				  ;
-				  Tipo = "texto"))),
+    ;
+	(	  PDict.'clase' == 3 -> Tipo = "fecha"
+	;
+		  (   PDict.'clase' == 6 -> Tipo = "booleano"
+		  ;
+		      Tipo = "texto"))),
     ListOpciones = PDict.get('listaquery',[]),
     (
 	normalizaropciones(ListOpciones,Opciones) ->
@@ -219,12 +247,12 @@ variable_a_paso3(PDict,paso(Codigo, "",PDict.'label',Tipo,Opciones)) :-
 variable_a_paso2(PDict,paso(Codigo, PDict.'nombre',PDict.'label',Tipo,Opciones)) :-
     atom_string(Codigo,PDict.'codigo'),
     (	PDict.'clase' == 1 -> Tipo = "numero"
-	      ;
-	      (	  PDict.'clase' == 3 -> Tipo = "fecha"
-			;
-			(   PDict.'clase' == 6 -> Tipo = "booleano"
-				  ;
-				  Tipo = "texto"))),
+    ;
+	(	  PDict.'clase' == 3 -> Tipo = "fecha"
+	;
+		  (   PDict.'clase' == 6 -> Tipo = "booleano"
+		  ;
+		      Tipo = "texto"))),
     ListOpciones = PDict.get('listaquery',[]),
     (
 	normalizaropciones(ListOpciones,Opciones) ->
@@ -251,7 +279,7 @@ normalizaropciones([X,Y|R],[opcion(X,Y)|S]):-
 
 
 cargar_variables_tramite_en_espera(Variables,Pasos) :-
-		maplist(variable_a_paso3, Variables,Pasos).
+    maplist(variable_a_paso3, Variables,Pasos).
 
 
 exportar_datos_tramite_kafka(UserID,Tramite,TramiteID,Tokeninicio,Contexto) :-
@@ -272,9 +300,9 @@ crearDictJsonTramite(UserID,Tramite,TramiteID,Tokeninicio,Contexto,
     %    flujo_tramite_codigo_pasos(Tramite,Pasos),
     findall(P,completar_variable(UserID,Tramite,TramiteID,P),ListaVariables),
     retractdatos(UserID,Tramite,TramiteID,ListaVariables),
-%    maplist(completar_variable(UserID,Tramite), % Pasos,
-%	    ListaVariables),
- %   informacion_tramite(Tramite,CodigoInterno,_,_,_,_),
+    %    maplist(completar_variable(UserID,Tramite), % Pasos,
+    %	    ListaVariables),
+    %   informacion_tramite(Tramite,CodigoInterno,_,_,_,_),
     dict_create(Dict,_,
 		[
 		    'Accion': Contexto.accion,
@@ -337,11 +365,11 @@ retractdatos(UserID,Tramite,Tramid,[_{'CodigoVariable': IdChars,'Valor': _}|List
 completar_variable(UserID,Tramite,Tramid, % paso(Id,_Nombre, _Caption,_Tipo,_Opciones),
 		   P) :-
     dato_tramite(UserID,Tramite,Tramid, Id, Valor),
-		       atom_number(Id,IdChars),
-		       dict_create(P,_,[
-				       'CodigoVariable':IdChars,
-				       'Valor':Valor
-				   ]).
+    atom_number(Id,IdChars),
+    dict_create(P,_,[
+			'CodigoVariable':IdChars,
+			'Valor':Valor
+		    ]).
 
 
 

@@ -1,0 +1,8 @@
+# Diálogo de ejemplo: renovación de DNI
+# Una línea por turno del ciudadano. Líneas con # son comentarios.
+# Para ejecutar: python3 test_a2a_client.py --script renovar_dni.txt
+
+hola quiero renovar mi dni
+si
+12345678
+15/03/1990

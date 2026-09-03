@@ -1,36 +1,33 @@
 {
-    "agent_id": "chita-chatbot-tramites-ar",
-    "name": "Asistente de Trámites",
-    "description": "Agente conversacional que guía trámites administrativos paso a paso, mantiene estado y permite pausar y reanudar trámites.",
-    "protocol": "a2a",
+    "protocolVersion": "0.2.6",
+    "name": "Asistente de Trámites Chita",
+    "description": "Agente conversacional que guía trámites administrativos argentinos paso a paso. Mantiene estado, permite pausar y reanudar trámites, y gestiona identificación de usuarios.",
+    "url": "http://localhost:8001/a2a",
+    "preferredTransport": "JSONRPC",
     "version": "1.0.0",
-    "language": "es",
-    "stateful": true,
-    "session_key": "user_id",
-    "capabilities": [
-	"buscar_tramite",
-	"iniciar_tramite",
-	"confirmar_tramite",
-	"ejecutar_tramite",
-	"pausar_tramite",
-	"reanudar_tramite",
-	"cancelar_tramite"
-    ],
-    "endpoints": {
-	"chat": {
-	    "method": "POST",
-	    "path": "/chat",
-	    "input_schema": {
-		"message": {
-		    "user_id": "string",
-		    "text": "string"
-		}
-	    },
-	    "output_schema": {
-		"respuesta": "string"
-	    }
-	}
+    "capabilities": {
+	"streaming": false,
+	"pushNotifications": false,
+	"stateTransitionHistory": false
     },
+    "defaultInputModes": ["text/plain"],
+    "defaultOutputModes": ["text/plain"],
+    "skills": [
+	{
+	    "id": "tramites-municipales",
+	    "name": "Trámites Municipales",
+	    "description": "Buscar, iniciar, pausar y reanudar trámites administrativos (certificados, licencias, permisos, inscripciones). Guía al usuario paso a paso recolectando los datos necesarios y enviándolos al motor de trámites.",
+	    "tags": ["tramites", "municipio", "argentina", "certificados", "licencias", "permisos"],
+	    "examples": [
+		"quiero renovar mi DNI",
+		"necesito un certificado de nacimiento",
+		"tengo un trámite pendiente",
+		"quiero pausar el trámite que inicié"
+	    ],
+	    "inputModes": ["text/plain"],
+	    "outputModes": ["text/plain"]
+	}
+    ],
     "auth": {
 	"type": "none"
     }

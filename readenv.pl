@@ -19,5 +19,6 @@ read_lines(Stream) :-
 process_line(Line) :-
     % Ignorar comentarios o líneas vacías
     (   sub_string(Line, 0, 1, _, "#") ; Line == "" ) -> true
-    ;   split_string(Line, "=", "", [Key, Value]),
+    ;   split_string(Line, "=", "", [Key|Rest]),
+        atomic_list_concat(Rest, "=", Value),
         setenv(Key, Value).

@@ -1,0 +1,42 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "model": "opencode/glm-5.2",
+    "instructions": ["AGENTS.md"],
+    "provider": {
+	"openai": {
+	    "options": {
+		"apiKey": "{env:OPENAI_API_KEY}"
+	    }
+	},
+	"openrouter": {
+	    "options": {
+		"apiKey": "{env:OPENROUTER_API_KEY}"
+	    },
+	    "models": {
+		"deepseek/deepseek-chat-v3.1:free": {
+		    "name": "DeepSeek Chat v3.1 (free)"
+		},
+		"google/gemini-2.0-flash-exp:free": {
+		    "name": "Gemini 2.0 Flash (free)"
+		}
+	    }
+	},
+	"groq": {
+	    "options": {
+		"apiKey": "{env:GROQ_API_KEY}"
+	    }
+	},
+	"ollama": {
+	    "npm": "@ai-sdk/openai-compatible",
+	    "name": "Ollama (local)",
+	    "options": {
+		"baseURL": "http://localhost:11434/v1"
+	    },
+	    "models": {
+		"gemma4:latest": {
+		    "name": "Gemma 4 (local)"
+		}
+	    }
+	}
+    }
+}
