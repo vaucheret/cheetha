@@ -5,3 +5,11 @@ assert(estado("9819723b-642d-46e6-8d67-f2ca3a696401",buscar_tramite,_{historia:[
 retract(estado("9819723b-642d-46e6-8d67-f2ca3a696401",buscar_tramite,_{historia:[user-"hola",assistant-"¿El trámite que querés iniciar es para el municipio de Las Parejas?"]},[])).
 assert(estado("9819723b-642d-46e6-8d67-f2ca3a696401",buscar_tramite,_{canal:a2a,historia:[user-"hola",assistant-"¿El trámite que querés iniciar es para el municipio de Las Parejas?"],task_id_a2a:"04d3fa35-c186-440b-9d20-2018ba129aa9"},[])).
 retractall(estado("9819723b-642d-46e6-8d67-f2ca3a696401",_,_,_),1).
+assert(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+retract(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+assert(estado("5492995301481",buscar_tramite,_{historia:[user-"hola",assistant-"¿El trámite que querés iniciar es para la Municipalidad de Las Parejas o para otra entidad? ¿Cuál entidad corresponde?"]},[])).
+retractall(estado("5492995301481",_,_,_),1).
+assert(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+retract(estado("5492995301481",buscar_tramite,_{historia:[]},[])).
+assert(estado("5492995301481",buscar_tramite,_{historia:[user-"hola",assistant-"¿Para qué municipio o entidad es el trámite? (por ejemplo: Las Parejas)"]},[])).
+retractall(estado("5492995301481",_,_,_),1).
