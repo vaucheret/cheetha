@@ -6,3 +6,5 @@
 .aider*
 /estado_usuarios.pl
 /what
+/run/
+/logs/

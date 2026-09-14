@@ -204,19 +204,30 @@ cargar_tramite_nuevo_desde_JsonRil(Dictionbase) :-
 cargar_tramite_nuevo_desde_Json2(Diction) :-
     Dict = Diction.get('tramite'),
     Variables = Diction.get('variablesEntrada',[]),   
-    %		string_lower(Dict.'nombre',NString),atom_string(Nombre,NString),
     C = Dict.'codigoRIL',
     (
 	C == -1
     -> true
     ;
-	%%		assertz(tramite_disponible(Nombre)),
-	%%		assertz(informacion_tramite(Nombre,Dict.'codigo',Dict.'asincronico',Dict.'loginNecesario',Dict.'descripcion',_{'Automatizado':true})),
-	retract(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info)),
-	Info.codigochita = Dict.'codigo',
-	assertz(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info.put(asincronico,Dict.'asincronico').put(loginNecesario,Dict.'loginNecesario'))),	
-	maplist(variable_a_paso2, Variables,Pasos),
-	assertz(flujo_tramite_codigo_pasos(Dict.'codigo',Pasos))
+	(	actualizar_tramite_gps(C, Dict, Variables)
+	->	true
+	;	format("Aviso: tramite GPS codigoRIL=~w codigo=~w ignorado (sin match en RIL)~n", [C, Dict.'codigo'])
+	)
+    ).
+
+actualizar_tramite_gps(C, Dict, Variables) :-
+    catch(
+	(   tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info),
+	    Info.codigochita = Dict.'codigo',
+	    retract(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info)),
+	    assertz(tramite_codigo_nombre_descripcion_motor(C,Nombre,D,Info.put(asincronico,Dict.'asincronico').put(loginNecesario,Dict.'loginNecesario'))),	
+	    maplist(variable_a_paso2, Variables,Pasos),
+	    assertz(flujo_tramite_codigo_pasos(Dict.'codigo',Pasos))
+	),
+	Error,
+	(   format("Aviso: error procesando tramite GPS codigoRIL=~w: ~w~n", [C, Error]),
+	    fail
+	)
     ).
 
 

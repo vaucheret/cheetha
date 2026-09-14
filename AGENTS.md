@@ -40,9 +40,29 @@ Kafka ── bridge (8090) ─→ Prolog /notificacion_tramite
 
 ## Orden de inicio
 
+### Forma recomendada: `chita.sh`
+
+```bash
+./chita.sh doctor             # preflight: binarios, .env, módulos Python, puertos
+./chita.sh start              # levanta los 4 procesos core, esperando readiness de cada uno
+./chita.sh status             # tabla: proceso / PID / puerto / estado / uptime
+./chita.sh restart prolog     # reinicia solo un proceso (ej. si falló el chatbot)
+./chita.sh logs flask         # tail -f del log de un proceso (sin argumento: los 4)
+./chita.sh stop               # detiene todo en orden inverso
+```
+
+- PID files en `run/`, logs (con banner por arranque) en `logs/` (gitignored).
+- Config por entorno: `CHITA_PROVIDER` (default `openai`), `PROLOG_PORT` (default `8000`), `PROLOG_READY_TIMEOUT` (default 90s), `PY_READY_TIMEOUT` (default 25s), `STOP_GRACE` (default 10s).
+- Procesos: `prolog` (8000) → `a2a` (8001) → `kafka` (8090) → `flask` (8070).
+- El PID guardado para `prolog` es el del swipl real (dueño del puerto), no el del wrapper bash de flatpak (`~/.local/bin/swipl` → `flatpak run`), para que TERM/estado operen sobre el proceso correcto.
+
+### Arranque manual (equivalente)
+
 ```bash
 # 1. Chatbot Prolog (puerto 8000)
-swipl -g "start_server(openai,8000)." -t halt chatbot.pl
+# OJO: '-t halt' a secas NO sirve: http_server/2 devuelve el control y el
+# toplevel mata los threads al instante. Hace falta un goal bloqueante:
+swipl -g "start_server(openai,8000)" -g "thread_get_message(_)" -t halt chatbot.pl
 # o en REPL interactivo: start_server(openai,8000).
 
 # 2. Bridge A2A (puerto 8001) — para que otros agentes usen a Chita como subagente
@@ -139,6 +159,8 @@ Tres fuentes se cargan al inicio (en orden):
 1. API RIL remota → `tramite_codigo_nombre_descripcion_motor/4`
 2. API GPS remota (con bearer token de `thinknetc3.ddns.net`) → actualiza existentes + agrega `flujo_tramite_codigo_pasos/2`
 3. `tramites/*.json` locales → agrega trámites estáticos con `automatizado:false`
+
+Los trámites de GPS cuyo `codigoRIL` no matchea nada de RIL se ignoran con un "Aviso:" en el log (antes, uno solo de estos desincronizados hacía fallar `start_server` completo y el servidor no arrancaba).
 
 ## Persistencia
 

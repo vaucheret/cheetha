@@ -18,3 +18,5 @@ ngrok http http://localhost:7080
 
 ssh -R 80:localhost:8001 serveo.net
 ngrok http http://localhost:8001
+
+python3 chita_a2a_server.py
