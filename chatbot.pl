@@ -2,6 +2,7 @@
 
 :- use_module(library(http/http_server)).
 :- use_module(library(http/http_client)).
+:- use_module(library(http/http_json)).
 :- use_module(library(lists)).
 :- use_module(tramite_json).
 :- use_module(gramatica).
@@ -13,6 +14,7 @@
 :- use_module(library(readutil), [read_line_to_string/2]).
 :- use_module(library(uuid),[uuid/1]).
 :- use_module(library(date), [parse_time/2]).
+:- use_module(library(url)).
 
 
 
@@ -124,13 +126,22 @@ handle_identificacion(Request) :-
     format(user_output,"entro identifiacion ~n",[]),
     %%%%%%% log %%%%%%%%
     format(user_output,"datos de identificacion recibidos ~w~n",[In]),
-    UserID = In.identificacion,
-    format(user_output,"respuesta ~a~n",[In.verificado]),
+    json_get_case(In,credentialID,CredentialID),
+    (   retract_identificacion_pendiente(CredentialID, UserID)
+    ->  continuar_identificacion(In, UserID)
+    ;   format(user_output,"Aviso: callback sin identificacion pendiente: ~w~n",[CredentialID]),
+	reply_json_dict(_{ status: "ok", message: "Sin identificacion pendiente para este credentialID" }, [encoding(utf8)])
+    ).
+
+continuar_identificacion(In, UserID) :-
+    json_get_case(In,verificada,Verificada),
+    format(user_output,"respuesta ~a~n",[Verificada]),
     
-    (   In.verificado == true
+    (   Verificada == true
     ->
-	format(user_output,"identificacion valida para usuario ~w~n",[UserID]),
-	assert_usuario_identificado(UserID,In.tokenChita,In.validaHasta),
+	json_get_case(In,token,Token),
+	json_get_case(In,vencimiento,Vencimiento),
+	assert_usuario_identificado(UserID,Token,Vencimiento),
 	%		 retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
 	retract_tramite_en_espera(UserID,CodigoTramite,TramiteID, Contexto),
 	Contexto.auth_required = true,
@@ -344,7 +355,17 @@ handle_chat_a2a(Request) :-
     
     format(string(RS), "~w", [Respuesta]),
     (   estado(UserID, FaseFinal, CtxFinal, _) -> true ; FaseFinal = buscar_tramite, CtxFinal = Ctx0 ),
-    estado_a2a(FaseFinal, CtxFinal, EstadoA2A, Artifact),
+    estado_a2a(FaseFinal, CtxFinal, EstadoA2A0, Artifact0),
+    (   tramite_en_espera(UserID,_,_,CtxEspera),
+	get_dict(deep_link_verificacion, CtxEspera, DeepLink)
+    ->  EstadoA2A = "auth-required",
+	Artifact = _{name:"identificacion-qr",
+		     parts:[ _{kind:"text",
+			       text:"Escaneá este QR con la app de identidad para verificarte"},
+			     _{kind:"file", file:_{uri:DeepLink, mimeType:"text/uri-list"}} ]}
+    ;   EstadoA2A = EstadoA2A0,
+	Artifact = Artifact0
+    ),
     %%%%%%% log %%%%%%%%
     format(user_output,"[A2A] responde ~s estado=~w~n",[RS,EstadoA2A]),
     %%%%%%% log %%%%%%%%
@@ -661,8 +682,8 @@ procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
 % Predicados auxiliares de procesamiento de fases
 % ———————————————————————————————————————————————————————
 
-identificado(_,_) :- !. % deshabilidado por ahora
-%identificado(0,_) :- !. % no requiere identificación
+%identificado(_,_) :- !. % deshabilidado por ahora
+identificado(0,_) :- !. % no requiere identificación
 identificado(D,UserID) :-
     D \= 0,
     usuario_identificado(UserID,_,Fecha_Expiracion),
@@ -676,26 +697,87 @@ identificado(D,UserID) :-
 	fail
     ).
      
+json_get_case(Dict,Key,Val) :-
+    get_dict(Key,Dict,Val), !.
+json_get_case(Dict,Key,Val) :-
+    atom_codes(Key,[C0|Rest]),
+    (   C0 >= 65, C0 =< 90 -> C1 is C0 + 32
+    ;   C0 >= 97, C0 =< 122 -> C1 is C0 - 32
+    ),
+    atom_codes(Key2,[C1|Rest]),
+    get_dict(Key2,Dict,Val), !.
+
+verificacion_de(Dict,Verif) :-
+    json_get_case(Dict,verificacion,Verif),
+    \+ json_get_case(Dict,respuestaOK,false).
+
+mensaje_error(Dict,ME) :-
+    json_get_case(Dict,msgErr,ME), !.
+mensaje_error(_,"") .
+
 solicitar_identificacion(UserID,Dict) :-
+    uuid(Uuid),
+    format(string(UuidStr),"~w",[Uuid]),
+    split_string(UuidStr,"-","",Partes),
+    atomics_to_string(Partes,Hex),
+    sub_string(Hex,0,12,_,Cola),
+    string_concat("ch",Cola,CredentialID),
     getenv('FLASKURL',FlaskURL),
     atom_concat(FlaskURL, '/identificacion_usuario',WebhookURL),
-    format(string(URL), "https://thinknetc3.ddns.net/chita/apihook/api/webhooks/ObtenerDeepLink?Identificacion=~w&URLWebHook=~w", [UserID,WebhookURL]),
+    www_form_encode(WebhookURL, WebhookURLEnc),
+    ( getenv('SOVRA_PEDIR_VERIFICACION_URL',SovraURL)
+    -> true
+    ;   SovraURL = 'https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion'
+    ),
+    format(string(URL),
+	   "~w?URLRespuesta=~w&ModoQR=1&Dimension=655",
+	   [SovraURL,WebhookURLEnc]),
+    DCQL =
+    _{dcql_query:
+      _{credentials:
+	[_{id: CredentialID,
+	   format: "vc+sd-jwt",
+	   claims:
+	   [_{path:["Apellido"]},
+	    _{path:["Nombres"]},
+	    _{path:["CUIT"]},
+	    _{path:["FechaNacimiento"]},
+	    _{path:["Entidad"]}]
+	  }]
+       }},
+    ( getenv('SOVRA_TOKEN',T) -> true ; T = 'kjedWBHKJHWEBJXNDLWKED87OWLAKJSBDA' ),
+    atom_concat('Bearer ',T,Bearer),
     catch(
-	http_get(
+	http_post(
 	    URL,
+	    json(DCQL),
 	    Resp,
-	    [ request_header('Content-Type'='application/json')
+	    [ request_header('Authorization'=Bearer),
+	      timeout(30),
+	      json_object(dict)
 	    ]
 	),
 	E
 	 %%%%%%% log %%%%%%%%
-	 ,format(user_output,"❌ Error solicitando identificación para usuario ~w: ~w~n",[UserID,E])
-	 %%%%%%% log %%%%%%%%
+	 ,format(user_output,"❌ Error solicitando identificación para usuario ~w: ~w~n",[UserID,E])% ,
+	 % Resp = _{msgErr:"sin respuesta del servicio de identidad"}
+	 %  %%%%%%% log %%%%%%%%
     ),
-    atom_json_term(String,Resp,[as(string)]),
-    atom_json_dict(String, Dict, [])
+    (   is_dict(Resp)
+    ->  Dict = Resp
+    ;   catch(atom_json_dict(Resp,Dict,[]),
+	      E2,
+	      (   format(user_output,"❌ Respuesta no-JSON de PedirVerificacion para usuario ~w: ~w~n",[UserID,E2]),
+		  Dict = _{msgErr:"respuesta inválida del servicio de identidad"}
+	      ))
+    ),
+    (   verificacion_de(Dict,Verif),
+	get_dict(session_id,Verif,_)
+    ->  assert_identificacion_pendiente(CredentialID,UserID)
+    ;   mensaje_error(Dict,ME),
+	format(user_output,"❌ PedirVerificacion rechazada para usuario ~w: ~s~n",[UserID,ME])
+    )
 .
-%    format(user_output,"respuesta de solicitud de identificacion original ~w~n",[Resp]).
 
 
 iniciar_ejecucion_tramite(UserID, Contexto, Respuesta) :-
@@ -727,15 +809,21 @@ iniciar_ejecucion_tramite(UserID, Contexto, Respuesta) :-
 	%% log %%%%%%% log %%%%%%%%
 	format(user_output,"respuesta de solicitud de identificacion dict ~w~n",[Resp]),
 	%% log %%%%%%% log %%%%%%%%
-	LinkDidComm = Resp.presentationContent,
-	sub_atom(LinkDidComm,Before,_,_, "_oob="),
-	Start is Before + 5,
-	sub_atom(LinkDidComm,Start,_,0,OOB),
-	getenv('FLASKURL',FlaskURL),
-	atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?oob=',OOB],Respuesta),
-	%		  assert_tramite_pendiente(UserID, TramiteID, Contexto.put(topic,"tramites").put(tramiteid,TramiteID).put(auth_required,true), P)
-	assert_tramite_en_espera(UserID,T,TramiteID,
-				 ContextoNuevo.put(auth_required,true))
+	(   verificacion_de(Resp,Verif),
+	    json_get_case(Verif,authorization_request_uri_ref,OpenIdURI),
+	    OpenIdURI \== ""
+	->  www_form_encode(OpenIdURI, OpenIdURICod),
+	    getenv('FLASKURL',FlaskURL),
+	    atomic_list_concat(['Por favor identifícate para continuar: ',FlaskURL,'/identificar?vp=',OpenIdURICod],Respuesta),
+	    ContextoEspera = ContextoNuevo.put(auth_required,true).put(deep_link_verificacion,OpenIdURI)
+	;   mensaje_error(Resp,ME0),
+	    ( sub_string(ME0,0,120,_,ME) -> true ; ME = ME0 ),
+	    format(string(Respuesta),
+		   "No pude iniciar la verificación de identidad: ~s. Intentá de nuevo en unos minutos.",
+		   [ME]),
+	    ContextoEspera = ContextoNuevo.put(auth_required,true)
+	),
+	assert_tramite_en_espera(UserID,T,TramiteID, ContextoEspera)
     ).
 
 

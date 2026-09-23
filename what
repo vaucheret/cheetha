@@ -1,4 +1,9 @@
-﻿https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
+﻿ **Pendiente**: preguntar a sovra el deep-link/universal-link que abre su wallet (el esquema `openid4vp://` no tiene handler) → para que el click en WhatsApp abra la app directamente
+ Pregúntales cuál es el **deep link o universal link de su wallet** (ej. `sovra://`, `eudiw://`, o un `https://wallet.sovra.io/...` que abra la app). Cuando nos pasen el esquema correcto, cambio la generación del URI y el click en WhatsApp abrirá la app directamente
+
+
+
+https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
 
 {
   "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IkNsYXZlMSIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI0IiwiVXNlcl9OYW1lX0FQSSI6ImZjdWVsbG8iLCJOb21icmVfQVBJIjoiQ3VlbGxvLCBBbGZyZWRvIiwianRpIjoiNTdjNTE4MDljNWE5NGJhYjg0MmZjNWUxZTBmYTc4NjQiLCJraWQiOiJDbGF2ZTEiLCJSb2xfQVBJIjpbIlVzdWFyaW8iLCJBZG1pbmlzdHJhZG9yIl0sIkNvcnJlbyI6InJwZXJhenpvbGxpQGhvdG1haWwuY29tIiwiVmFyaWFibGUgTnJvIDIiOiIyMSIsIkZlY2hhTiI6IjE5ODAwMTAxMDAwMDAwIiwiTm9tYnJlIjoiSnVhbiBQZXJleiIsImN1aXQiOiIzMzY4MzEzMjg1OSIsIm5iZiI6MTc4MDQzOTQyNSwiZXhwIjoxNzgwNDQzMDI1LCJpYXQiOjE3ODA0Mzk0MjUsImlzcyI6IkVtaXNvckpXVE1vdG9yQ2hpdGEiLCJhdWQiOiJBdWRpZW5jaWFKV1RDaGl0YSJ9.H7sksKkwE2COTYZIZLzDZvO5aEMHAPK9aPizLVdrVwKG6kmIydMJ1UB3ainPUtanqylOwOF5Z9EYY-VUdx6A5Q",

@@ -1,7 +1,11 @@
 # flask_whatsapp_proxy.py
 from flask import Flask, request, jsonify
 import time
+import io
+from urllib.parse import quote
 from dotenv import load_dotenv
+import qrcode
+from qrcode.image.svg import SvgPathImage
 import os
 import requests
 import json
@@ -202,24 +206,109 @@ def transcribe_audio(audio_bytes):
 @app.route("/identificar")
 def identificar():
     oob = request.args.get("oob")
+    vp = request.args.get("vp")
 
-    if not oob:
+    if vp:
+        didcomm_link = vp
+    elif oob:
+        didcomm_link = f"didcomm://?_oob={oob}"
+    else:
         return "Missing OOB", 400
 
-    didcomm_link = f"didcomm://?_oob={oob}"
+    # Para Android usamos intent:// (los navegadores embebidos de WhatsApp/Facebook
+    # bloquean la navegación por custom schemes, pero sí procesan intents)
+    scheme = didcomm_link.split("://", 1)[0]
+    data = didcomm_link.split("://", 1)[1]
+    fallback = request.url
+    intent_link = f"intent://{data}#Intent;scheme={scheme};S.browser_fallback_url={quote(fallback, safe='')};end"
+
+    link_scheme_js = json.dumps(didcomm_link)
+    link_intent_js = json.dumps(intent_link)
+
+    # QR inline: la wallet solo abre los pedidos desde su scanner interno
+    # (no registra handler para el esquema), asi que en PC se escanea con el telefono
+    qr = qrcode.QRCode(error_correction=1, border=4, image_factory=SvgPathImage)
+    qr.add_data(didcomm_link)
+    qr.make(fit=True)
+    buf = io.BytesIO()
+    qr.make_image().save(buf)
+    qr_svg = buf.getvalue().decode().split("?>", 1)[1].strip()
 
     html = f"""
     <html>
     <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Identificación</title>
-        <script>
-            window.location.href = "{didcomm_link}";
-        </script>
+        <style>
+            #qrbox svg {{ width: 280px; height: 280px; display: block; margin: 0 auto; }}
+            #qrCaption {{ color: #555; font-size: 14px; max-width: 360px; margin: 10px auto 0; }}
+        </style>
     </head>
-    <body>
-        <h2>Redirigiendo a la aplicación de identidad...</h2>
-        <p>Si no se abre automáticamente, haz click:</p>
-        <a href="{didcomm_link}">Abrir identificación</a>
+    <body style="font-family:sans-serif;text-align:center;padding-top:40px">
+        <h2>Identificación con credencial digital</h2>
+        <p id="estado" style="color:#555">Abriendo la aplicación de identidad...</p>
+        <p style="margin:24px 0">
+            <a id="abrir" href="{didcomm_link}"
+               style="display:inline-block;padding:14px 28px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:18px">
+               Abrir identificación
+            </a>
+        </p>
+        <p style="margin:16px 0">
+            <button onclick="copiar()"
+                    style="padding:10px 18px;border-radius:8px;border:1px solid #ccc;background:#f5f5f5;font-size:15px">
+                Copiar enlace de verificación
+            </button>
+        </p>
+        <div id="qrbox" style="background:#fff;padding:12px;border-radius:8px;display:inline-block;margin-top:8px">
+            {qr_svg}
+        </div>
+        <p id="qrCaption"></p>
+        <p id="ayuda" style="display:none;color:#777;font-size:14px;max-width:340px;margin:0 auto">
+            Si la app no se abre: copiá el enlace, abrí Chrome (o Safari) y pegalo en la barra
+            de direcciones. Eso va a abrir la aplicación de identidad.
+        </p>
+        <script>
+            var LINK_SCHEME = {link_scheme_js};
+            var LINK_INTENT = {link_intent_js};
+            var ua = navigator.userAgent || "";
+            var esAndroid = /Android/.test(ua);
+            var esMobile = /Android|iPhone|iPad|Mobile/i.test(ua);
+            var esInApp = /FBAN|FBAV|Instagram|WhatsApp\\/|Line\\/|EmbeddedBrowser/.test(ua);
+            var link = esAndroid ? LINK_INTENT : LINK_SCHEME;
+            document.getElementById("abrir").href = link;
+
+            function copiar() {{
+                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                    navigator.clipboard.writeText(LINK_SCHEME);
+                }} else {{
+                    var i = document.createElement("input");
+                    i.value = LINK_SCHEME;
+                    document.body.appendChild(i);
+                    i.select();
+                    document.execCommand("copy");
+                    i.remove();
+                }}
+                document.getElementById("estado").textContent =
+                    "Enlace copiado. Abrilo en Chrome y se abrirá la app de identidad.";
+            }}
+
+            if (esMobile) {{
+                document.getElementById("qrCaption").textContent =
+                    "Si no se abre la app: escaneá este QR con la app de identidad " +
+                    "(desde otro dispositivo) o abrí esta página desde WhatsApp en una PC.";
+                if (!esInApp) {{
+                    setTimeout(function() {{ window.location.href = link; }}, 600);
+                }} else {{
+                    document.getElementById("estado").textContent =
+                        "Tocá el botón verde para abrir la app de identidad.";
+                    document.getElementById("ayuda").style.display = "block";
+                }}
+            }} else {{
+                document.getElementById("estado").textContent =
+                    "Escaneá este QR con la app de identidad de tu teléfono.";
+            }}
+        </script>
     </body>
     </html>
     """
@@ -260,6 +349,7 @@ def enviar_mensaje():
     return jsonify({"status": "ok"})
 
 @app.route("/identificacion_usuario", methods=["POST"])
+@app.route("/i", methods=["POST"])
 def identificacion_usuario():
     data = request.json
     try:
@@ -357,7 +447,7 @@ def webhook():
             time.sleep(2)
             send_whatsapp_text(sender_wa, f"📄 Te envié el documento:\n{prolog_reply}")
             # Botón interactivo para identificación (DIDComm)
-        elif "/identificar?oob=" in prolog_reply:
+        elif "/identificar?" in prolog_reply:
             
             m = re.search(r'(https?://\S+)', prolog_reply)
             if m:
@@ -368,32 +458,32 @@ def webhook():
                 if destinatario.startswith("549"):
                     destinatario = "54" + destinatario[3:]
 
-                    payload = {
-                        "messaging_product": "whatsapp",
-                        "to": destinatario,
-                        "type": "interactive",
-                        "interactive": {
-                            "type": "cta_url",
-                            "header": {
-                                "type": "text",
-                                "text": "Verificación de Identidad"
-                            },
-                            "body": {
-                                "text": prefix[:1024]
-                            },
-                            "footer": {
-                                "text": "Seguridad"
-                            },
-                            "action": {
-                                "name": "cta_url",
-                                "parameters": {
-                                    "display_text": "Identificarme",
-                                    "url": link
-                                }
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "to": destinatario,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "cta_url",
+                        "header": {
+                            "type": "text",
+                            "text": "Verificación de Identidad"
+                        },
+                        "body": {
+                            "text": prefix[:1024]
+                        },
+                        "footer": {
+                            "text": "Seguridad"
+                        },
+                        "action": {
+                            "name": "cta_url",
+                            "parameters": {
+                                "display_text": "Identificarme",
+                                "url": link
                             }
                         }
                     }
-                    
+                }
+
                 # payload = {
                 #     "messaging_product": "whatsapp",
                 #     "to": destinatario,

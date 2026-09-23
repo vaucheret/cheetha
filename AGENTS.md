@@ -98,6 +98,9 @@ KAFKA_BRIDGE_URL=http://localhost:8090
 FLASKURL=https://<ngrok>.ngrok-free.app
 # Opcional (A2A): si se setea, Prolog la usa para /internal/update_task
 A2A_BRIDGE_URL=http://localhost:8001
+# Opcional (Sovra): token Bearer y URL de PedirVerificacion para la identificación (si no, defaults en chatbot.pl)
+SOVRA_TOKEN=...
+SOVRA_PEDIR_VERIFICACION_URL=https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion
 # Opcional: URLs de las APIs de trámites (si no se setean, se usan los defaults hardcodeados)
 RIL_TRAMITES_URL=https://thinknetc3.ddns.net/chitaV2/APIRIL/api/TramitesRIL/ListarTramitesSimulados
 GPS_TRAMITES_URL=https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw
@@ -146,7 +149,7 @@ Mapeo TaskState A2A ↔ fase Chita:
 - `buscar/confirmar/ejecutar_tramite` pidiendo dato → `input-required`
 - `tramite_completado` → export Kafka → `working`
 - `handle_notificacion` Accion=4 (resultado) → `completed` + Artifact
-- `solicitar_identificacion` (DIDComm) → `auth-required`
+- `solicitar_identificacion` (Sovra OID4VP) → `auth-required` + Artifact QR: el chatbot guarda `deep_link_verificacion` (URI `openid4vp://` ref) en el contexto de `tramite_en_espera`; `handle_chat_a2a` lo devuelve como Artifact y el bridge lo convierte a PNG data-URI (lib `qrcode`) para que `/web` lo muestre escaneable
 - `terminar` / cancelar → `canceled`
 
 El canal de salida (`enviar_resultado/5` en chatbot.pl) bifurca por `Contexto.canal`:

@@ -106,6 +106,36 @@ def _get_task(task_id):
         return _tasks_store.get(task_id)
 
 
+def _qr_artifact(artifact):
+    """Convierte parts file con mimeType text/uri-list en un QR PNG inline (data URI)."""
+    if not artifact:
+        return artifact
+    try:
+        import qrcode, io, base64
+    except ImportError:
+        return artifact
+    arts = artifact if isinstance(artifact, list) else [artifact]
+    for art in arts:
+        if not isinstance(art, dict):
+            continue
+        for part in art.get("parts", []):
+            f = part.get("file") or {}
+            if f.get("mimeType") == "text/uri-list" and f.get("uri", "").startswith(("http", "openid4vp")):
+                try:
+                    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_L, border=4)
+                    qr.add_data(f["uri"])
+                    qr.make(fit=True)
+                    img = qr.make_image(fill_color="black", back_color="white")
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    b64 = base64.b64encode(buf.getvalue()).decode()
+                    part["file"] = {"uri": f"data:image/png;base64,{b64}",
+                                    "mimeType": "image/png", "name": "qr-identificacion"}
+                except Exception as e:
+                    print(f"[A2A] error generando QR: {e}")
+    return artifact
+
+
 def _update_task_state(task_id, state, message_text=None, artifact=None):
     """Actualiza un task existente (usado por /internal/update_task y por message/send)."""
     with _tasks_lock:
@@ -156,7 +186,7 @@ def internal_update_task():
     if not task_id:
         return jsonify({"status": "error", "message": "task_id requerido"}), 400
 
-    task = _update_task_state(task_id, estado, message_text=texto, artifact=artifact)
+    task = _update_task_state(task_id, estado, message_text=texto, artifact=_qr_artifact(artifact))
     if task is None:
         return jsonify({"status": "error", "message": f"task {task_id} no encontrado"}), 404
 
@@ -236,7 +266,7 @@ def _handle_message_send(params):
 
     respuesta = data.get("respuesta", "")
     estado = data.get("estado", "input-required")
-    artifact = data.get("artifact")
+    artifact = _qr_artifact(data.get("artifact"))
 
     # Construir/actualizar Task
     existing = _get_task(task_id)
@@ -389,6 +419,7 @@ let bridgeUrl = "";
 let contextId = null;
 let taskId = null;
 let polling = false;
+let renderedArtifacts = new Set();
 
 const SCRIPTS = {
   renovar_dni: ["hola quiero renovar mi dni", "si", "12345678", "15/03/1990"]
@@ -425,15 +456,22 @@ function addMsg(role, text, state) {
 }
 
 function addArtifact(artifact) {
+  const sig = JSON.stringify(artifact);
+  if (renderedArtifacts.has(sig)) return;
+  renderedArtifacts.add(sig);
   const chat = document.getElementById("chat");
   const div = document.createElement("div");
   div.className = "artifact";
   let name = artifact.name || "artifact";
   let parts = artifact.parts || [];
   let textParts = parts.filter(p => p.kind === "text").map(p => p.text).join(" ");
-  let links = parts.filter(p => p.kind === "file" && p.file && p.file.uri).map(p => p.file.uri);
+  let imgs = parts.filter(p => p.kind === "file" && p.file && p.file.mimeType && p.file.mimeType.startsWith("image/"));
+  let links = parts.filter(p => p.kind === "file" && p.file && p.file.uri && !imgs.includes(p)).map(p => p.file.uri);
   let html = "📦 " + escapeHtml(name);
   if (textParts) html += ": " + escapeHtml(textParts);
+  for (const im of imgs) {
+    html += '<br><img src="' + im.file.uri + '" alt="QR" style="max-width:220px;margin-top:8px;border-radius:4px;background:#fff">';
+  }
   if (links.length) html += ' <a href="' + links[0] + '" target="_blank">descargar</a>';
   div.innerHTML = html;
   chat.appendChild(div);
@@ -515,7 +553,7 @@ function handleTaskUpdate(task) {
     task.artifacts.forEach(a => addArtifact(a));
   }
 
-  if (state === "working" && !polling) {
+  if ((state === "working" || state === "auth-required") && !polling) {
     pollTask();
   }
 }
@@ -523,7 +561,7 @@ function handleTaskUpdate(task) {
 async function pollTask() {
   polling = true;
   addPolling("⏳ Trámite en proceso. Haciendo polling cada 2s...");
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 150; i++) {
     await new Promise(r => setTimeout(r, 2000));
     const payload = { jsonrpc: "2.0", id: crypto.randomUUID(), method: "tasks/get", params: { id: taskId } };
     try {
@@ -534,12 +572,11 @@ async function pollTask() {
       if (resp.error) continue;
       const task = resp.result;
       const state = task.status.state;
-      if (state !== "working") {
-        removePolling();
-        handleTaskUpdate(task);
-        polling = false;
-        return;
-      }
+      if (state === "working" || state === "auth-required") continue;
+      removePolling();
+      polling = false;
+      handleTaskUpdate(task);
+      return;
     } catch (e) { break; }
   }
   removePolling();
@@ -552,6 +589,7 @@ function resetSession() {
   contextId = null;
   taskId = null;
   polling = false;
+  renderedArtifacts.clear();
   document.getElementById("chat").innerHTML = "";
   setStatus("Sesión reiniciada.");
 }

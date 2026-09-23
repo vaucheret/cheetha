@@ -20,3 +20,45 @@ ssh -R 80:localhost:8001 serveo.net
 ngrok http http://localhost:8001
 
 python3 chita_a2a_server.py
+
+
+192.168.1.14
+
+
+
+{
+ "dcql_query":{"credentials":[
+           {"id":"72b539dc10004f9481ec59cd43e472cd",
+	   "format":"vc\u002Bsd-jwt",
+	   "claims":[
+	   {"path":["Apellido"]},
+	   {"path":["Nombres"]},
+	   {"path":["CUIT"]},
+	   {"path":["FechaNacimiento"]},
+	   {"path":["Entidad"]}]}
+	   ]}}
+
+public async Task<CRespuestaSovraVerificacionCreada>
+       CrearVerificacionAsync(string URLRespuesta, int ModoQR,
+        int Dimension, [FromBody] CDatosParaVerificacion Datos)
+
+ https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion?URLRespuesta=http&ModoQR=1&Dimension=655
+
+kjedWBHKJHWEBJXNDLWKED87OWLAKJSBDA
+
+
+if (!string.IsNullOrEmpty(Token))
+      {
+        Cliente.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+      }
+
+{"Verificacion":{"session_id":"5c170046-f2a7-4bcd-b86f-07e2b67ac39e","authorization_request_uri":"openid4vp://?client_id=decentralized_identifier%3Adid%3Asovra%3A0x29053d65e9b9c649eddc9252253713904a8d07b8\u0026request=eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDpzb3ZyYToweDI5MDUzZDY1ZTliOWM2NDllZGRjOTI1MjI1MzcxMzkwNGE4ZDA3Yjgja2V5LWFzc2VydCIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJhdWQiOiJodHRwczovL3NlbGYtaXNzdWVkLm1lL3YyIiwiY2xpZW50X2lkIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDpzb3ZyYToweDI5MDUzZDY1ZTliOWM2NDllZGRjOTI1MjI1MzcxMzkwNGE4ZDA3YjgiLCJjbGllbnRfbWV0YWRhdGEiOnsiY2xpZW50X25hbWUiOiJUaGlua25ldCJ9LCJkY3FsX3F1ZXJ5Ijp7ImNyZWRlbnRpYWxzIjpbeyJjbGFpbXMiOlt7InBhdGgiOlsiQXBlbGxpZG8iXX0seyJwYXRoIjpbIk5vbWJyZXMiXX0seyJwYXRoIjpbIkNVSVQiXX0seyJwYXRoIjpbIkZlY2hhTmFjaW1pZW50byJdfSx7InBhdGgiOlsiRW50aWRhZCJdfV0sImZvcm1hdCI6InZjK3NkLWp3dCIsImlkIjoiMzY1ZmNkZGY0Y2NlNGEwMDk1ZjkyNzliN2ViYTk4MjkifV19LCJleHAiOjE3ODk2NTM1NzUsImlhdCI6MTc4OTY1Mjk3NSwiaXNzIjoiZGVjZW50cmFsaXplZF9pZGVudGlmaWVyOmRpZDpzb3ZyYToweDI5MDUzZDY1ZTliOWM2NDllZGRjOTI1MjI1MzcxMzkwNGE4ZDA3YjgiLCJub25jZSI6InFMVWh5SWlLWDFqeGVfMUliZkhWOXciLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJyZXNwb25zZV91cmkiOiJodHRwczovL2FwaS5zb3ZyYS5pby93YWxsZXQvdmVyaWZpZXIvZGlyZWN0X3Bvc3QvNWMxNzAwNDYtZjJhNy00YmNkLWI4NmYtMDdlMmI2N2FjMzllIiwic3RhdGUiOiJxOGpxSmNPTjFtMEN6UlI0WkY5VmJ3In0.wQuuPs3uu1jhCEbO4ET6O_feizdWpT_Tr1PvSMhgjGZO6wn9zHsML1-xAcIL3mO9dM0K70yKP79xsvUiED8Nsg","authorization_request_uri_ref":"openid4vp://?client_id=decentralized_identifier%3Adid%3Asovra%3A0x29053d65e9b9c649eddc9252253713904a8d07b8\u0026request_uri=https%3A%2F%2Fapi.sovra.io%2Fwallet%2Fverifier%2Frequest%2F5c170046-f2a7-4bcd-b86f-07e2b67ac39e","status":"pending","expires_at":"2026-09-17T13:59:35Z"},"QRSvg":"","RespuestaOK":true,"MsgErr":""}
+
+{
+  "credentialID": "string",
+  "token": "string",
+  "vencimiento": "2026-09-17T13:59:42.248Z",
+  "verificada": true,
+  "mensaje": "string",
+  "holder_DID": "string"
+}
