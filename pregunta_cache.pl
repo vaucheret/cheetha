@@ -6,3 +6,5 @@ pregunta_cache(84, '34', "Claro, aquí tienes una pregunta clara y amable para s
 pregunta_cache(83, '25', "Para obtener el certificado deudor moroso alimentario, ¿cuál es su CUIT?").
 pregunta_cache(86, '66', "Para continuar con el trámite de Libre Deuda del Municipio de Escobar (si no es deudor alimentario), por favor indique su CUIT (11 dígitos, sin guiones ni espacios). Ej.: 20123456789").
 pregunta_cache(80, '76', "Por favor, ingrese su CUIT para crear la credencial verificable (11 dígitos, sin espacios ni guiones).").
+pregunta_cache(93, '95', "Por favor, indícanos tu CUIT (Clave Única de Identificación Tributaria) para poder emitir la credencial verificable de escolaridad a partir de tu CV. Ingresa el número en formato XX-XXXXXXXX-X o sin guiones.").
+pregunta_cache(93, '96', "Por favor, ¿cuál es el nombre de pila de su hijo? Indique únicamente el nombre (sin apellidos).").

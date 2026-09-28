@@ -142,25 +142,25 @@ continuar_identificacion(In, UserID) :-
 	json_get_case(In,token,Token),
 	json_get_case(In,vencimiento,Vencimiento),
 	assert_usuario_identificado(UserID,Token,Vencimiento),
-	%		 retract_tramite_pendiente(UserID, TramiteID, Contexto, P),
-	retract_tramite_en_espera(UserID,CodigoTramite,TramiteID, Contexto),
-	Contexto.auth_required = true,
-	tramite_codigo_nombre_descripcion_motor(CodigoTramite,Nombre,_,DictMotor),
-	flujo_tramite_codigo_pasos(DictMotor.codigochita, P),
-	%	flujo_tramite(T, P),
-	%	informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _,_),
-	( estado(UserID,_,_,_) ->
-	  assert_tramite_pendiente(UserID, TramiteID, Contexto, P),
-	  enviar_resultado(UserID, Contexto,
-			   "Trámite en pausa. Escribí «continuar» para retomarlo.",
-			   "input-required", null)
-	;
-	  
-	  ejecutar_tramite(UserID,Contexto,P,
-			   "Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Nombre, Mensaje),
-	  enviar_resultado(UserID, Contexto, Mensaje, "working", null)
-	),
-	reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
+	(   retract_tramite_en_espera(UserID,CodigoTramite,TramiteID, Contexto)
+	->  Contexto.auth_required = true,
+	    tramite_codigo_nombre_descripcion_motor(CodigoTramite,Nombre,_,DictMotor),
+	    flujo_tramite_codigo_pasos(DictMotor.codigochita, P),
+	    ( estado(UserID,_,_,_) ->
+	      assert_tramite_pendiente(UserID, TramiteID, Contexto, P),
+	      enviar_resultado(UserID, Contexto,
+			       "Trámite en pausa. Escribí «continuar» para retomarlo.",
+			       "input-required", null)
+	    ;
+	      
+	      ejecutar_tramite(UserID,Contexto,P,
+			       "Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Nombre, Mensaje),
+	      (   P == [] -> EstadoRetoma = "working" ; EstadoRetoma = "input-required" ),
+	      enviar_resultado(UserID, Contexto, Mensaje, EstadoRetoma, null)
+	    ),
+	    reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
+	;   reply_json_dict(_{ status: "ok", message: "Identificación registrada; sin trámite pendiente para retomar" }, [encoding(utf8)])
+	)
     
     ;   reply_json_dict(_{ status: "error", message: "Identificación fallida" }, [encoding(utf8)])
     ).
