@@ -468,7 +468,14 @@ function addArtifact(artifact) {
   let imgs = parts.filter(p => p.kind === "file" && p.file && p.file.mimeType && p.file.mimeType.startsWith("image/"));
   let links = parts.filter(p => p.kind === "file" && p.file && p.file.uri && !imgs.includes(p)).map(p => p.file.uri);
   let html = "📦 " + escapeHtml(name);
-  if (textParts) html += ": " + escapeHtml(textParts);
+  if (textParts) {
+    let esc = escapeHtml(textParts);
+    for (const u of textParts.match(/https?:\/\/[^\s]+/g) || []) {
+      const eu = escapeHtml(u);
+      esc = esc.replace(eu, '<a href="' + eu + '" target="_blank" style="word-break:break-all">' + eu + '</a>');
+    }
+    html += ": " + esc;
+  }
   for (const im of imgs) {
     html += '<br><img src="' + im.file.uri + '" alt="QR" style="max-width:220px;margin-top:8px;border-radius:4px;background:#fff">';
   }

@@ -1,3 +1,13 @@
+1) Crear dos nuevos tab chita1 y chita2
+2) dividir cuatro ventanas en cada uno
+3) en chita1 llamar a vterm y ngrok http http://localhost:8070
+4) poner el url en la variable FLASKURL de .env
+5) llamar a vterm y ngrok http http://localhost:8001
+6) en un shell llamar a ./chita.sh start
+7) en chita2 llamar a los logs de cada proceso.
+8) poner el webhook en meta development
+
+
 1. levantar el chatbot ( start_server(openai,8000). )
 2. levantar el kafka_bridge.py ( python3 kafka_bridge.py )
 

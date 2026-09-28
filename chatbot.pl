@@ -9,7 +9,7 @@
 :- use_module(persistencia).
 :- use_module(readenv, [load_dot_env/1]).
 :- use_module(library(json)).
-:- use_module(library(apply), [maplist/3]).
+:- use_module(library(apply), [maplist/3, include/3]).
 :- use_module(library(listing), [portray_clause/2]).
 :- use_module(library(readutil), [read_line_to_string/2]).
 :- use_module(library(uuid),[uuid/1]).
@@ -150,12 +150,15 @@ continuar_identificacion(In, UserID) :-
 	%	flujo_tramite(T, P),
 	%	informacion_tramite(Tramite,Contexto.tramite, Asincronico, _Auth, _,_),
 	( estado(UserID,_,_,_) ->
-	  assert_tramite_pendiente(UserID, TramiteID, Contexto, P)
+	  assert_tramite_pendiente(UserID, TramiteID, Contexto, P),
+	  enviar_resultado(UserID, Contexto,
+			   "Trámite en pausa. Escribí «continuar» para retomarlo.",
+			   "input-required", null)
 	;
 	  
 	  ejecutar_tramite(UserID,Contexto,P,
 			   "Identificación exitosa. Retomando tu trámite pendiente. «~w». ~s",Nombre, Mensaje),
-	  enviar_resultado(UserID, Contexto, Mensaje, "input-required", null)
+	  enviar_resultado(UserID, Contexto, Mensaje, "working", null)
 	),
 	reply_json_dict(_{ status: "ok", message: "Identificación exitosa" }, [encoding(utf8)])
     
@@ -214,31 +217,40 @@ handle_notificacion(Request) :-
 		 % generar_pregunta_chatgpt(Tramite, Paso, Pregunta),
 		 % format(string(Texto),
 		 % 	"Hola, para continuar con el tramite «~w», necesitamos mas información. ~s", [Tramite, Pregunta])
-		 )
+		 ),
+		 Artifacto = null
 	    ;
 		 (	 Mensaje.'Accion' == 2
 		 ->
 			 format(string(Texto),
-				"Hola, para completar el tramite «~w», necesitamos que te dirijas al siguiente link  ~s", [Tramite, Mensaje.'Link'])
+				"Hola, para completar el tramite «~w», necesitamos que te dirijas al siguiente link  ~s", [Tramite, Mensaje.'Link']),
+			 Artifacto = null
 		 ;
 			 (    Mensaje.'Accion' == 4
 			 ->
 			      Excepcion = Mensaje.'Excepcion',
 			      (
 				  Excepcion \= "" ->
-				  format(string(Texto),"⚠ Ocurrió un error en el trámite: ~s",[Excepcion])
+				  format(string(Texto),"⚠ Ocurrió un error en el trámite: ~s",[Excepcion]),
+				  Artifacto = null
 			      ;
 				  Respuestas = Mensaje.'Variables',
 				  format(user_output,"con esta respuesta ~w~n",[Respuestas]),
 				  maplist(mensajecontenido, Respuestas, Strings),
-				  atomics_to_string(Strings,Texto)
+				  atomics_to_string(Strings,Texto),
+				  (   include(variable_con_contenido, Respuestas, Validas),
+				      Validas \= []
+				  ->  maplist(variable_a_part, Validas, Partes),
+				      Artifacto = _{name:"Resultado del trámite", parts:Partes}
+				  ;   Artifacto = null
+				  )
 			      )
 			 
 			 %		      format(string(Texto),
 			 %			     "Hola, el tramite «~w», ha sido completado", [Tramite])
 			 ))
 	    ),
-	    enviar_resultado(UserID, Contexto, Texto, "completed", null),
+	    enviar_resultado(UserID, Contexto, Texto, "completed", Artifacto),
 	    reply_json_dict(_{ status: "ok" }, [encoding(utf8)])
 	;   reply_json_dict(_{ status: "error", message: "Trámite no encontrado" }, [encoding(utf8)])
 	)
@@ -246,6 +258,28 @@ handle_notificacion(Request) :-
 
 mensajecontenido(M,S) :-
     format(string(S),"~w descargar de  ~w ~n",[M.'Mensaje',M.'Contenido']).    
+
+variable_con_contenido(M) :-
+    C = M.'Contenido',
+    \+ ( C == "" ; C == '' ; C == null ; C == [] ).
+
+variable_a_part(M, P) :-
+    C = M.'Contenido',
+    N = M.'Nombre',
+    (   N == "" ; N == '' -> Nombre = "resultado" ; Nombre = N ),
+    mimetype_por_extension(C, Mime),
+    P = _{kind:"file", name:Nombre, file:_{uri:C, mimeType:Mime}}.
+
+mimetype_por_extension(URI, Mime) :-
+    atom_string(URI, A),
+    downcase_atom(A, L),
+    (   string_concat(_, ".pdf", L) -> Mime = "application/pdf"
+    ;   string_concat(_, ".svg", L) -> Mime = "image/svg+xml"
+    ;   string_concat(_, ".png", L) -> Mime = "image/png"
+    ;   string_concat(_, ".jpg", L) -> Mime = "image/jpeg"
+    ;   string_concat(_, ".jpeg", L) -> Mime = "image/jpeg"
+    ;   Mime = "application/octet-stream"
+    ).
 
 
 % --- Canal de salida bifurcado por Contexto.canal ---

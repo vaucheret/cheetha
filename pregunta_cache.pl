@@ -5,3 +5,4 @@ pregunta_cache(84, '33', "Claro, aquí tienes una sugerencia para la pregunta:\n
 pregunta_cache(84, '34', "Claro, aquí tienes una pregunta clara y amable para solicitar el dato:\n\n\"¿Podrías, por favor, definir tu sexo? Puedes elegir entre 'M' para Masculino o 'F' para Femenino. ¡Gracias!\"").
 pregunta_cache(83, '25', "Para obtener el certificado deudor moroso alimentario, ¿cuál es su CUIT?").
 pregunta_cache(86, '66', "Para continuar con el trámite de Libre Deuda del Municipio de Escobar (si no es deudor alimentario), por favor indique su CUIT (11 dígitos, sin guiones ni espacios). Ej.: 20123456789").
+pregunta_cache(80, '76', "Por favor, ingrese su CUIT para crear la credencial verificable (11 dígitos, sin espacios ni guiones).").
