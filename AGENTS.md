@@ -105,6 +105,10 @@ SOVRA_PEDIR_VERIFICACION_URL=https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/
 RIL_TRAMITES_URL=https://thinknetc3.ddns.net/chitaV2/APIRIL/api/TramitesRIL/ListarTramitesSimulados
 GPS_TRAMITES_URL=https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw
 GPS_TOKEN_URL=https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
+# Opcional: Kafka — broker y tópicos (chatbot.pl, kafka_bridge.py y motores simulados)
+KAFKA_BROKER=66.70.179.213:9092
+KAFKA_TOPICO_ENVIO=tramitesPrueba
+KAFKA_TOPICO_RESPUESTA=tramitesAsincronicos
 ```
 
 Dependencias Python (no hay requirements.txt): `flask`, `kafka-python`, `requests`, `python-dotenv`, `openai`, `phonenumbers`

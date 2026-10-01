@@ -11,7 +11,9 @@ app = Flask(__name__)
 load_dotenv()
 
 #KAFKA_SERVER = "localhost:9092"
-KAFKA_SERVER = '66.70.179.213:9092'
+KAFKA_SERVER = os.getenv("KAFKA_BROKER", "66.70.179.213:9092")
+TOPICO_ENVIO = os.getenv("KAFKA_TOPICO_ENVIO", "tramitesPrueba")
+TOPICO_RESPUESTA = os.getenv("KAFKA_TOPICO_RESPUESTA", "tramitesAsincronicos")
 PROLOG_BASE_URL = os.getenv("PROLOG_BASE_URL")
 TRAM_PROLOG_URL = f"{PROLOG_BASE_URL}/notificacion_tramite"
 
@@ -22,7 +24,7 @@ resultados_tramite = {}
 @app.route('/enviar_a_kafka', methods=['POST'])
 def enviar_a_kafka():
     data = request.json
-    topic = data.get("topic", "tramitesPrueba")
+    topic = data.get("topic", TOPICO_ENVIO)
     kafka_server = data.get("url",KAFKA_SERVER),
     mensaje = data.get("mensaje", {})
     producer = KafkaProducer(
@@ -77,7 +79,7 @@ def enviar_a_kafka():
 # =============================
 def escuchar_tramites_asincronicos():
     consumer = KafkaConsumer(
-        'tramitesAsincronicos',
+        TOPICO_RESPUESTA,
         bootstrap_servers=KAFKA_SERVER,
         value_deserializer=lambda m: json.loads(m.decode('utf-8')),
         auto_offset_reset='latest',
@@ -85,7 +87,7 @@ def escuchar_tramites_asincronicos():
         enable_auto_commit=True
     )
 
-    print("🎧 Escuchando tópico 'tramitesAsincronicos'...")
+    print(f"🎧 Escuchando tópico '{TOPICO_RESPUESTA}'...")
 
     for message in consumer:
         data = message.value

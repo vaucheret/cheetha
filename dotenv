@@ -11,7 +11,10 @@ A2A_BRIDGE_PORT=8001
 RIL_TRAMITES_URL=https://thinknetc3.ddns.net/chitaV2/APIRIL/api/TramitesRIL/ListarTramitesSimulados
 GPS_TRAMITES_URL=https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw
 GPS_TOKEN_URL=https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
-FLASKURL=https://eaae-45-178-97-191.ngrok-free.app
+KAFKA_BROKER=66.70.179.213:9092
+KAFKA_TOPICO_ENVIO=tramitesPrueba
+KAFKA_TOPICO_RESPUESTA=tramitesAsincronicos
+FLASKURL=https://1e81-45-178-97-191.ngrok-free.app
 
 
  

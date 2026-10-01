@@ -1,12 +1,18 @@
 from kafka import KafkaConsumer, KafkaProducer
+from dotenv import load_dotenv
 import json
 import time
 import random
+import os
 
-KAFKA_SERVER = "localhost:9092"
+load_dotenv()
+
+KAFKA_SERVER = os.getenv("KAFKA_BROKER", "66.70.179.213:9092")
+TOPICO_ENVIO = os.getenv("KAFKA_TOPICO_ENVIO", "tramitesPrueba")
+TOPICO_RESPUESTA = os.getenv("KAFKA_TOPICO_RESPUESTA", "tramitesAsincronicos")
 
 consumer = KafkaConsumer(
-    "tramites",
+    TOPICO_ENVIO,
     bootstrap_servers=KAFKA_SERVER,
     value_deserializer=lambda m: json.loads(m.decode("utf-8")),
     auto_offset_reset="latest",
@@ -18,7 +24,7 @@ producer = KafkaProducer(
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
 
-print("🤖 Motor simulado escuchando 'tramites'...")
+print(f"🤖 Motor simulado escuchando '{TOPICO_ENVIO}'...")
 
 for msg in consumer:
     data = msg.value
@@ -39,5 +45,5 @@ for msg in consumer:
         }
     }
 
-    producer.send("tramitesAsincronicos", resultado)
+    producer.send(TOPICO_RESPUESTA, resultado)
     print(f"📤 Resultado enviado (asincrónico): {resultado}")
