@@ -426,7 +426,10 @@ const SCRIPTS = {
 };
 
 window.onload = function() {
-  document.getElementById("bridgeUrl").value = window.location.origin;
+  const urlCompleta = window.location.href;
+  const resultado = urlCompleta.endsWith('/web') ? urlCompleta.slice(0, -4) : urlCompleta;
+  document.getElementById("bridgeUrl").value = resultado;
+  // window.location.origin;
 };
 
 function setStatus(text) {
