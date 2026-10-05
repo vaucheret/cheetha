@@ -188,7 +188,7 @@ cargar_tramite_nuevo_desde_JsonRil(Dictionbase) :-
     % ->
     % 	atom_json_term(Atom,Reply,[as(string)]),
     % 	atom_json_dict(Atom, Dict, []),
-    phrase(("\n Requisitos: \n",variable_a_string(Dictionbase.requisitos)),Req),
+    phrase(("\n Requisitos: \n",variable_a_string(Dictionbase.requisitos,"")),Req),
     string_codes(Requisitos,Req),
     % ;   format("Error al descargar el archivo JSON desde la URL.~n")
     % ),
@@ -231,10 +231,12 @@ actualizar_tramite_gps(C, Dict, Variables) :-
     ).
 
 
-variable_a_string([]) --> [].
-variable_a_string([PDict|Rest]) -->
-    format_("- ~w Expedido por: ~w ~n", [PDict.'descripcion', PDict.'expedidoPor']),
-    variable_a_string(Rest).
+variable_a_string([],_) --> [].
+variable_a_string([PDict|Rest],Tab) -->
+    format_("~w- ~w Expedido por: ~w ~n", [Tab,PDict.'descripcion', PDict.'expedidoPor']),
+    {	( PDict.'tramiteAsociado' = 'null' -> Lista = [] ; Lista = PDict.tramiteAsociado.requisitos ) , string_concat(Tab,"    ",NTab) },
+    variable_a_string(Lista,NTab),
+    variable_a_string(Rest,Tab).
 
 
 variable_a_paso3(PDict,paso(Codigo, "",PDict.'label',Tipo,Opciones)) :-
