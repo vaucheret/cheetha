@@ -413,7 +413,7 @@ WEB_TESTER_HTML = r"""<!DOCTYPE html>
   .agent-info { font-size: 12px; color: #666; padding: 6px 20px; background: #fafafa; border-bottom: 1px solid #eee; }
   .agent-info b { color: #333; }
   #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
+  .msg { max-width: 75%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; word-wrap: break-word; white-space: pre-wrap; }
   .msg.user { align-self: flex-end; background: #1a73e8; color: white; }
   .msg.agent { align-self: flex-start; background: white; border: 1px solid #e0e0e0; }
   .msg .state { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; font-weight: 600; }
@@ -422,7 +422,7 @@ WEB_TESTER_HTML = r"""<!DOCTYPE html>
   .state-completed { background: #e8f0fe; color: #1967d2; }
   .state-auth-required { background: #fce8e6; color: #c5221f; }
   .state-canceled, .state-failed { background: #fce8e6; color: #c5221f; }
-  .artifact { align-self: flex-start; background: #f3e8fd; border: 1px solid #d9aefb; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: -4px; }
+  .artifact { align-self: flex-start; background: #f3e8fd; border: 1px solid #d9aefb; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: -4px; white-space: pre-wrap; }
   .artifact a { color: #8430ce; text-decoration: none; font-weight: 600; }
   .polling { align-self: center; color: #b06000; font-size: 12px; font-style: italic; }
   .input-bar { background: #fff; padding: 12px 20px; border-top: 1px solid #ddd; display: flex; gap: 10px; }
@@ -485,7 +485,8 @@ function setStatus(text) {
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
-  let html = div.innerHTML.replace(/\n/g, "<br>");
+  // newlines y sangría se preservan con white-space: pre-wrap en .msg/.artifact
+  let html = div.innerHTML;
   html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   return html;
 }
