@@ -11,14 +11,17 @@ WhatsApp → Flask proxy (8070) → Prolog /chat (8000) → Kafka bridge (8090) 
          ← Flask /enviar_mensaje ← Prolog /notificacion_tramite ← Kafka bridge ← Kafka ←
 ```
 
+Alternativa: `flask_cloud_api_proxy_a2a.py` (8071), el mismo proxy pero actuando como **cliente A2A** del bridge (ver «Proxy WhatsApp vía A2A»).
+
 - **chatbot.pl** — servidor HTTP, motor de diálogo (3 fases: buscar/confirmar/ejecutar), integración LLM (compatible OpenAI)
 - **tramite_json.pl** — carga definiciones de trámites desde `tramites/*.json` locales y dos APIs remotas (RIL + GPS con auth por token)
 - **persistencia.pl** — hechos persistentes en SQLite (`estado`, `tramite_pendiente`, `tramite_en_espera`, `dato_tramite`, `usuario_identificado`)
 - **gramatica.pl** — parsers DCG para números (incl. spelling en español), fechas, booleanos
 - **flask_cloud_api_proxy.py** — webhook de WhatsApp Cloud API, TTS (OpenAI), envío de PDF, enlaces DIDComm de identidad
+- **flask_cloud_api_proxy_a2a.py** — igual que el anterior pero como cliente A2A del bridge (puerto 8071, proceso `flask_a2a`); alternativa al directo
 - **kafka_bridge.py** — puentea Kafka `tramitesAsincronicos` → Prolog `/notificacion_tramite`
 - **sistema_motor.py** / **motor_simulado.py** — procesadores backend simulados
-- **chita_a2a_server.py** — bridge A2A (puerto 8001): expone a Chita como subagente vía protocolo A2A (JSON-RPC 2.0). Otros agentes (municipios) lo usan sin pasar por WhatsApp
+- **chita_a2a_server.py** — bridge A2A (puerto 8001): expone a Chita como subagente vía protocolo A2A (JSON-RPC 2.0). Otros agentes (municipios) lo usan sin pasar por WhatsApp; también lo usa el proxy WhatsApp vía A2A
 - **test_a2a_client.py** — cliente A2A de ejemplo (agente municipio ficticio)
 
 ## Arquitectura A2A (subagente)
@@ -29,8 +32,11 @@ Agentes municipio ── A2A ──┤   /.well-known/agent.json
 (Google ADK, LangGraph…)   │   message/send → POST /chat_a2a (Prolog 8000)
                            │   tasks/get    → store in-memory del bridge
                            │   /internal/update_task ← Prolog (Kafka/DIDComm)
+                           │        └─ push del Task → callback registrado
+                           │           por el cliente (pushNotificationConfig)
                            │
 WhatsApp ── Flask (8070) ──┤   POST /chat (8000, sin cambios)
+WhatsApp ── Flask A2A (8071) ─┤   message/send → /a2a del bridge; push → /a2a/push
                            │
 Kafka ── bridge (8090) ─→ Prolog /notificacion_tramite
    Prolog bifurca por Contexto.canal:
@@ -44,16 +50,17 @@ Kafka ── bridge (8090) ─→ Prolog /notificacion_tramite
 
 ```bash
 ./chita.sh doctor             # preflight: binarios, .env, módulos Python, puertos
-./chita.sh start              # levanta los 4 procesos core, esperando readiness de cada uno
+./chita.sh start              # levanta los 5 procesos, esperando readiness de cada uno
 ./chita.sh status             # tabla: proceso / PID / puerto / estado / uptime
 ./chita.sh restart prolog     # reinicia solo un proceso (ej. si falló el chatbot)
-./chita.sh logs flask         # tail -f del log de un proceso (sin argumento: los 4)
+./chita.sh logs flask         # tail -f del log de un proceso (sin argumento: todos)
 ./chita.sh stop               # detiene todo en orden inverso
 ```
 
 - PID files en `run/`, logs (con banner por arranque) en `logs/` (gitignored).
 - Config por entorno: `CHITA_PROVIDER` (default `openai`), `PROLOG_PORT` (default `8000`), `PROLOG_READY_TIMEOUT` (default 90s), `PY_READY_TIMEOUT` (default 25s), `STOP_GRACE` (default 10s).
-- Procesos: `prolog` (8000) → `a2a` (8001) → `kafka` (8090) → `flask` (8070).
+- Procesos: `prolog` (8000) → `a2a` (8001) → `kafka` (8090) → `flask` (8070) → `flask_a2a` (8071).
+- `flask` y `flask_a2a` son alternativos: el webhook de WhatsApp (ngrok) apunta a uno solo; el otro queda en pie para pruebas. `FLASKURL` debe apuntar al proxy activo (Sovra registra el callback de identificación contra esa URL).
 - El PID guardado para `prolog` es el del swipl real (dueño del puerto), no el del wrapper bash de flatpak (`~/.local/bin/swipl` → `flatpak run`), para que TERM/estado operen sobre el proceso correcto.
 
 ### Arranque manual (equivalente)
@@ -74,10 +81,12 @@ python3 kafka_bridge.py
 # 4. (opcional) Motor simulado
 python3 sistema_motor.py
 
-# 5. Proxy Flask de WhatsApp (puerto 8070)
+# 5. Proxy Flask de WhatsApp (puerto 8070, habla directo con Prolog)
 python3 flask_cloud_api_proxy.py
+#    ...o su alternativa como cliente A2A (puerto 8071)
+python3 flask_cloud_api_proxy_a2a.py
 
-# 6. ngrok (exponer puerto 8070 para WhatsApp, o 8001 para A2A)
+# 6. ngrok (exponer puerto 8070 o 8071 para WhatsApp, o 8001 para A2A)
 ngrok http http://localhost:8070
 
 # 7. Token de verificación del webhook de Meta (desde .env META_VERIFY_TOKEN):
@@ -98,6 +107,10 @@ KAFKA_BRIDGE_URL=http://localhost:8090
 FLASKURL=https://<ngrok>.ngrok-free.app
 # Opcional (A2A): si se setea, Prolog la usa para /internal/update_task
 A2A_BRIDGE_URL=http://localhost:8001
+# Opcional (proxy vía A2A): puerto de flask_cloud_api_proxy_a2a.py y URL que registra
+# como callback de push en el bridge para los resultados asíncronos
+A2A_FLASK_PORT=8071
+A2A_PUSH_CALLBACK_URL=http://localhost:8071/a2a/push
 # Opcional (Sovra): token Bearer y URL de PedirVerificacion para la identificación (si no, defaults en chatbot.pl)
 SOVRA_TOKEN=...
 SOVRA_PEDIR_VERIFICACION_URL=https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion
@@ -149,6 +162,8 @@ set_provider(ollamalocal). % gemma4:latest (localhost:11434)
 | `/web` | GET | Interfaz web de testing (chat multi-turno desde el browser) |
 | `/internal/update_task` | POST | Interno: Prolog notifica resultados asíncronos (Kafka/DIDComm) al bridge |
 
+Push notifications: `message/send` acepta `params.pushNotificationConfig.url` (o `params.configuration.pushNotificationConfig.url`, o `message.metadata.callbackUrl`). El bridge guarda `{task_id: url}` y, cuando Prolog empuja un resultado a `/internal/update_task`, reenvía el Task actualizado a ese callback en un thread (para no bloquear el timeout de 5s de Prolog). En memoria: los clientes re-registran el callback en cada `message/send`.
+
 Mapeo TaskState A2A ↔ fase Chita:
 - `buscar/confirmar/ejecutar_tramite` pidiendo dato → `input-required`
 - `tramite_completado` → export Kafka → `working`
@@ -159,6 +174,19 @@ Mapeo TaskState A2A ↔ fase Chita:
 El canal de salida (`enviar_resultado/5` en chatbot.pl) bifurca por `Contexto.canal`:
 - `whatsapp` (default) → POST `FLASKURL/enviar_mensaje` (como hoy, retrocompatible)
 - `a2a` → POST `A2A_BRIDGE_URL/internal/update_task`
+
+## Proxy WhatsApp vía A2A (flask_cloud_api_proxy_a2a.py, puerto 8071)
+
+Misma lógica de WhatsApp que el proxy directo (webhook, TTS, PDF, CTA de identificación, `/identificar`, `/identificacion_usuario`), pero actúa como **cliente A2A puro** del bridge, igual que cualquier agente externo:
+
+- Turno del usuario → `message/send` (JSON-RPC 2.0) al bridge con `pushNotificationConfig.url` apuntando a su `A2A_PUSH_CALLBACK_URL` (`/a2a/push`).
+- Respuesta síncrona: texto de `task.status.message` → WhatsApp (PDF si hay link, CTA si contiene `/identificar?`).
+- Resultados asíncronos: Prolog → `/internal/update_task` → el bridge pushea el Task → `/a2a/push` entrega a WhatsApp sólo los mensajes agent nuevos del `history` (índice `delivered_hist` por sesión, evita duplicar la respuesta síncrona).
+- Sesión en memoria: `sender_wa → {context_id, task_id, delivered_hist}` + `task_id → sender_wa`; un `context_id` estable por número de WhatsApp.
+- No expone `/enviar_mensaje` (con `canal:a2a` el Prolog no lo usa).
+- Env vars: `A2A_FLASK_PORT` (default 8071), `A2A_PUSH_CALLBACK_URL` (default `http://localhost:8071/a2a/push`).
+
+**Riesgo conocido (revisar más adelante):** tanto el mapeo de sesiones del proxy como los callbacks de push y los tasks del bridge viven sólo en memoria. Si se reinicia el bridge o el proxy se pierden los tasks/callbacks activos: los resultados asíncronos en vuelo (Kafka/DIDComm) no llegan a WhatsApp hasta el próximo `message/send` del usuario (que re-registra el callback y recrea el task con el mismo id). Antes de producción: persistir el mapeo (SQLite) y/o re-registro de callbacks, y evaluar persistencia de tasks en el bridge.
 
 ## Carga de trámites
 

@@ -8,16 +8,20 @@ PROLOG_BASE_URL=http://localhost:8000
 KAFKA_BRIDGE_URL=http://localhost:8090
 A2A_BRIDGE_URL=http://localhost:8001
 A2A_BRIDGE_PORT=8001
+# Proxy WhatsApp vía A2A (flask_cloud_api_proxy_a2a.py): puerto propio y URL que
+# registra como callback de push en el bridge (results asíncronos Kafka/DIDComm)
+A2A_FLASK_PORT=8071
+A2A_PUSH_CALLBACK_URL=http://localhost:8071/a2a/push
 RIL_TRAMITES_URL=https://thinknetc3.ddns.net/chitaV2/APIRIL/api/TramitesRIL/ListarTramitesSimulados
 GPS_TRAMITES_URL=https://thinknetc3.ddns.net/chitav2/apigps/api/Tramite/ListarConParametros?Ticket=qwqw
 GPS_TOKEN_URL=https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?Usuario=fcuello&Clave=fc1234%21
 KAFKA_BROKER=66.70.179.213:9092
 KAFKA_TOPICO_ENVIO=tramitesPrueba
 KAFKA_TOPICO_RESPUESTA=tramitesAsincronicos
-FLASKURL=https://1e81-45-178-97-191.ngrok-free.app
+FLASKURL=https://f41b-45-178-97-191.ngrok-free.app
 
 
- 
+
 # Opcional (Sovra): token Bearer y URL de PedirVerificacion (si no, usa defaults en chatbot.pl)
 SOVRA_TOKEN=kjedWBHKJHWEBJXNDLWKED87OWLAKJSBDA
 SOVRA_PEDIR_VERIFICACION_URL=https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion

@@ -9,6 +9,8 @@ Endpoints:
   GET  /.well-known/agent.json     → Agent Card estándar A2A
   POST /a2a                         → despachador JSON-RPC (message/send, tasks/get)
   POST /internal/update_task        → interno: Prolog notifica resultados asíncronos (Kafka/DIDComm)
+                                       y los empuja (push) a los clientes que registraron
+                                       pushNotificationConfig en message/send
 
 Puerto por defecto: 8001.  Variable de entorno A2A_BRIDGE_URL para override.
 
@@ -35,6 +37,14 @@ _tasks_lock = threading.Lock()
 
 # Mapeo user_id (contextId) → task_id activo, para asociar updates asíncronos
 _context_to_task = {}
+
+# Callbacks de push (pushNotificationConfig) registrados por los clientes A2A:
+# {task_id: url}. Cuando Prolog empuja un resultado asíncrono vía
+# /internal/update_task, el bridge reenvía el Task actualizado a esa URL en un
+# thread (para no bloquear el timeout de 5s del http_post del Prolog).
+# En memoria: si el bridge reinicia, los clientes re-registran el callback en
+# el próximo message/send.
+_task_push_callbacks = {}
 
 
 def _now_iso():
@@ -155,6 +165,30 @@ def _update_task_state(task_id, state, message_text=None, artifact=None):
         return task
 
 
+def _push_config_url(params, msg):
+    """Extrae la URL de push notification de un message/send, con tolerancia a
+    las variantes habituales: params.pushNotificationConfig.url,
+    params.configuration.pushNotificationConfig.url o message.metadata.callbackUrl."""
+    cfg = params.get("pushNotificationConfig")
+    if not isinstance(cfg, dict):
+        cfg = (params.get("configuration") or {}).get("pushNotificationConfig")
+    if isinstance(cfg, dict) and cfg.get("url"):
+        return cfg["url"]
+    metadata = msg.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("callbackUrl"):
+        return metadata["callbackUrl"]
+    return None
+
+
+def _push_task(url, task):
+    """Reenvía un Task actualizado al callback del cliente A2A (push asíncrono)."""
+    try:
+        requests.post(url, json=task, timeout=5)
+        print(f"[A2A-push] task {task.get('id')} → {url}")
+    except Exception as e:
+        print(f"[A2A-push] error notificando a {url}: {e}")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Agent Card (well-known)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -189,6 +223,12 @@ def internal_update_task():
     task = _update_task_state(task_id, estado, message_text=texto, artifact=_qr_artifact(artifact))
     if task is None:
         return jsonify({"status": "error", "message": f"task {task_id} no encontrado"}), 404
+
+    # Push asíncrono al cliente que registró pushNotificationConfig para este task
+    with _tasks_lock:
+        push_url = _task_push_callbacks.get(task_id)
+    if push_url:
+        threading.Thread(target=_push_task, args=(push_url, task), daemon=True).start()
 
     print(f"[A2A-internal] task {task_id} → {estado}: {texto[:80]}")
     return jsonify({"status": "ok"}), 200
@@ -247,6 +287,12 @@ def _handle_message_send(params):
     if not task_id:
         with _tasks_lock:
             task_id = _context_to_task.get(context_id) or str(uuid.uuid4())
+
+    # Registrar/actualizar el callback de push del cliente para este task
+    push_url = _push_config_url(params, msg)
+    if push_url:
+        with _tasks_lock:
+            _task_push_callbacks[task_id] = push_url
 
     # Registrar user_id = context_id para que Prolog mantenga sesión
     user_id = context_id

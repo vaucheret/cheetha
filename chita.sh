@@ -9,7 +9,7 @@
 #   ./chita.sh logs     [proc]      tail -f de los logs
 #   ./chita.sh doctor               chequeos previos al arranque
 #
-# Procesos: prolog (8000)  a2a (8001)  kafka (8090)  flask (8070)
+# Procesos: prolog (8000)  a2a (8001)  kafka (8090)  flask (8070)  flask_a2a (8071)
 #
 # Config por entorno:
 #   CHITA_PROVIDER       proveedor LLM de start_server/2   (default: openai)
@@ -39,13 +39,18 @@ STOP_GRACE="${STOP_GRACE:-10}"
 A2A_PORT="$(sed -n 's/^[[:space:]]*A2A_BRIDGE_PORT[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' .env 2>/dev/null | tail -1)"
 A2A_PORT="${A2A_PORT:-8001}"
 
-# Los puertos de flask y kafka están hardcodeados en los .py; acá sólo se usan
-# para el health-check. Si los cambiás en el fuente, cambialos también acá.
+# Los puertos de flask, flask_a2a y kafka están hardcodeados en los .py (salvo
+# que el .py lea un override del .env); acá sólo se usan para el health-check.
+# Si los cambiás en el fuente, cambialos también acá.
 FLASK_PORT=8070
+FLASK_A2A_PORT="$(sed -n 's/^[[:space:]]*A2A_FLASK_PORT[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' .env 2>/dev/null | tail -1)"
+FLASK_A2A_PORT="${FLASK_A2A_PORT:-8071}"
 KAFKA_PORT=8090
 
 # Orden de arranque. El stop recorre esta lista al revés.
-PROCS=(prolog a2a kafka flask)
+# flask y flask_a2a son alternativos: el webhook de WhatsApp (ngrok) apunta a
+# uno solo; el otro queda en pie para pruebas.
+PROCS=(prolog a2a kafka flask flask_a2a)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Colores
@@ -68,28 +73,31 @@ err()  { printf '%s!!! %s %s\n' "$C_RED" "$C_RST" "$*" >&2; }
 
 proc_port() {
     case "$1" in
-        prolog) echo "$PROLOG_PORT" ;;
-        a2a)    echo "$A2A_PORT" ;;
-        kafka)  echo "$KAFKA_PORT" ;;
-        flask)  echo "$FLASK_PORT" ;;
+        prolog)     echo "$PROLOG_PORT" ;;
+        a2a)        echo "$A2A_PORT" ;;
+        kafka)      echo "$KAFKA_PORT" ;;
+        flask)      echo "$FLASK_PORT" ;;
+        flask_a2a)  echo "$FLASK_A2A_PORT" ;;
     esac
 }
 
 proc_desc() {
     case "$1" in
-        prolog) echo "chatbot.pl (motor de diálogo)" ;;
-        a2a)    echo "chita_a2a_server.py (bridge A2A)" ;;
-        kafka)  echo "kafka_bridge.py (puente Kafka)" ;;
-        flask)  echo "flask_cloud_api_proxy.py (proxy WhatsApp)" ;;
+        prolog)     echo "chatbot.pl (motor de diálogo)" ;;
+        a2a)        echo "chita_a2a_server.py (bridge A2A)" ;;
+        kafka)      echo "kafka_bridge.py (puente Kafka)" ;;
+        flask)      echo "flask_cloud_api_proxy.py (proxy WhatsApp directo)" ;;
+        flask_a2a)  echo "flask_cloud_api_proxy_a2a.py (proxy WhatsApp vía A2A)" ;;
     esac
 }
 
 proc_file() {
     case "$1" in
-        prolog) echo "chatbot.pl" ;;
-        a2a)    echo "chita_a2a_server.py" ;;
-        kafka)  echo "kafka_bridge.py" ;;
-        flask)  echo "flask_cloud_api_proxy.py" ;;
+        prolog)     echo "chatbot.pl" ;;
+        a2a)        echo "chita_a2a_server.py" ;;
+        kafka)      echo "kafka_bridge.py" ;;
+        flask)      echo "flask_cloud_api_proxy.py" ;;
+        flask_a2a)  echo "flask_cloud_api_proxy_a2a.py" ;;
     esac
 }
 
@@ -125,9 +133,10 @@ build_cmd() {
                  chatbot.pl)
             ;;
         # -u => stdout/stderr sin buffer, si no los logs salen a los 8 KB.
-        a2a)   CMD=(python3 -u chita_a2a_server.py) ;;
-        kafka) CMD=(python3 -u kafka_bridge.py) ;;
-        flask) CMD=(python3 -u flask_cloud_api_proxy.py) ;;
+        a2a)        CMD=(python3 -u chita_a2a_server.py) ;;
+        kafka)      CMD=(python3 -u kafka_bridge.py) ;;
+        flask)      CMD=(python3 -u flask_cloud_api_proxy.py) ;;
+        flask_a2a)  CMD=(python3 -u flask_cloud_api_proxy_a2a.py) ;;
     esac
 }
 
@@ -180,6 +189,9 @@ is_ready() {
     port_open "$port" || return 1
     case "$proc" in
         a2a)
+            curl -fsS --max-time 3 "http://127.0.0.1:$port/health" >/dev/null 2>&1
+            ;;
+        flask_a2a)
             curl -fsS --max-time 3 "http://127.0.0.1:$port/health" >/dev/null 2>&1
             ;;
         prolog)
@@ -495,20 +507,22 @@ Comandos:
   start   [proc...]   arranca en orden, esperando que cada uno quede listo
   stop    [proc...]   detiene en orden inverso (SIGTERM, luego SIGKILL)
   restart [proc...]   stop + start
-  status              tabla de estado de los 4 procesos
+  status              tabla de estado de los procesos
   logs    [proc]      tail -f de los logs
   doctor              chequeos previos (binarios, .env, módulos, puertos)
 
 Procesos: ${PROCS[*]}
-  prolog  $(printf '%-5s' "$PROLOG_PORT") $(proc_desc prolog)
-  a2a     $(printf '%-5s' "$A2A_PORT") $(proc_desc a2a)
-  kafka   $(printf '%-5s' "$KAFKA_PORT") $(proc_desc kafka)
-  flask   $(printf '%-5s' "$FLASK_PORT") $(proc_desc flask)
+  prolog     $(printf '%-5s' "$PROLOG_PORT") $(proc_desc prolog)
+  a2a        $(printf '%-5s' "$A2A_PORT") $(proc_desc a2a)
+  kafka      $(printf '%-5s' "$KAFKA_PORT") $(proc_desc kafka)
+  flask      $(printf '%-5s' "$FLASK_PORT") $(proc_desc flask)
+  flask_a2a  $(printf '%-5s' "$FLASK_A2A_PORT") $(proc_desc flask_a2a)
 
 Ejemplos:
   ./chita.sh start              # levanta todo
   ./chita.sh restart prolog     # reinicia sólo el chatbot
   ./chita.sh logs flask         # sigue el log del proxy de WhatsApp
+  ./chita.sh restart flask_a2a  # reinicia el proxy vía A2A
 
 Entorno: CHITA_PROVIDER=$CHITA_PROVIDER PROLOG_PORT=$PROLOG_PORT
          PROLOG_READY_TIMEOUT=$PROLOG_READY_TIMEOUT PY_READY_TIMEOUT=$PY_READY_TIMEOUT

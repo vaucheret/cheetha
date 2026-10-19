@@ -8,3 +8,4 @@ pregunta_cache(86, '66', "Para continuar con el trámite de Libre Deuda del Muni
 pregunta_cache(80, '76', "Por favor, ingrese su CUIT para crear la credencial verificable (11 dígitos, sin espacios ni guiones).").
 pregunta_cache(93, '95', "Por favor, indícanos tu CUIT (Clave Única de Identificación Tributaria) para poder emitir la credencial verificable de escolaridad a partir de tu CV. Ingresa el número en formato XX-XXXXXXXX-X o sin guiones.").
 pregunta_cache(93, '96', "Por favor, ¿cuál es el nombre de pila de su hijo? Indique únicamente el nombre (sin apellidos).").
+pregunta_cache(81, '92', "Por favor, ingrese su CUIT para continuar con el trámite de Libre Deuda (Municipio de Escobar). Puede ingresarlo con guiones (ej.: 20-12345678-9) o solo números.").
