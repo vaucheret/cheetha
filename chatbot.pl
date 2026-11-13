@@ -20,7 +20,7 @@
 
 :- dynamic current_provider/1.
 
-:- dynamic pregunta_cache/3.
+:- dynamic pregunta_cache/4.
 
 
 
@@ -31,7 +31,7 @@ provider_data(ollamalocal, "gemma4:latest", 'OLLAMA_API_KEY', 'http://localhost:
 provider_data(gpt4all, "Meta-Llama-3-8B-Instruct.Q4_0.gguf", 'GPT4ALL_API_KEY', 'http://localhost:4891/v1/chat/completions').
 provider_data(openai, "gpt-5-mini", 'OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions').
 provider_data(deepseek, "deepseek/deepseek-chat-v3.1:free", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
-provider_data(gemini, "google/gemini-2.0-flash-exp:free", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completetions').
+provider_data(gemini, "google/gemini-2.0-flash-exp:free", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
 provider_data(groq, "openai/gpt-oss-20b", 'GROQ_API_KEY', 'https://api.groq.com/openai/v1/chat/completions').
 provider_data(anthropic, "claude-3.0", 'ANTHROPIC_API_KEY', 'https://api.anthropic.com/v1/complete').
 
@@ -341,7 +341,13 @@ handle_chat(Request) :-
     format(user_output, "pregunta ~s~n", [TextLower]),
     %%%%%%% log %%%%%%%%
 
-    dialogo(UserID, TextLower, Respuesta),
+    (   catch(dialogo(UserID, TextLower, Respuesta0), Error,
+              (   format(user_output, "❌ Error en /chat para ~w: ~w~n", [UserID, Error]),
+                  Respuesta0 = "Lo siento, hubo un problema interno. ¿Podés repetir tu mensaje?"
+              ))
+    ->  Respuesta = Respuesta0
+    ;   Respuesta = "Lo siento, no pude procesar tu mensaje. ¿Podés repetirlo?"
+    ),
     format(string(RS), "~w", [Respuesta]),
 
     %%%%%%% log %%%%%%%%
@@ -377,8 +383,11 @@ handle_chat_a2a(Request) :-
                                    assert_estado(UserID, Fase, Ctx0, Pasos)
     ;   assert_estado(UserID, buscar_tramite, Ctx0, [])
     ),
-    (   catch(dialogo(UserID, TextLower, Respuesta), _, Respuesta = "Error interno en el diálogo") ->
-            true
+    (   catch(dialogo(UserID, TextLower, Respuesta0), Error,
+              (   format(user_output, "❌ Error en /chat_a2a para ~w: ~w~n", [UserID, Error]),
+                  Respuesta0 = "Error interno en el diálogo"
+              ))
+    ->  Respuesta = Respuesta0
     ;   Respuesta = "No pude procesar tu mensaje."
     ),
     %%%%%%% log %%%%%%%%
@@ -386,17 +395,21 @@ handle_chat_a2a(Request) :-
     %%%%%%% log %%%%%%%%
 
     format(string(RS), "~w", [Respuesta]),
-    (   estado(UserID, FaseFinal, CtxFinal, _) -> true ; FaseFinal = buscar_tramite, CtxFinal = Ctx0   ),
-    estado_a2a(FaseFinal, CtxFinal, EstadoA2A0, Artifact0),
-    (   tramite_en_espera(UserID, _, _, CtxEspera),
-        get_dict(deep_link_verificacion, CtxEspera, DeepLink)
-    ->  EstadoA2A = "auth-required",
-        Artifact = _{name:"identificacion-qr",
-                     parts:[ _{kind:"text",
-                               text:"Escaneá este QR con la app de identidad para verificarte"},
-                             _{kind:"file", file:_{uri:DeepLink, mimeType:"text/uri-list"}} ]}
-    ;   EstadoA2A = EstadoA2A0,
-        Artifact = Artifact0
+    (   es_mensaje_despedida(Respuesta)
+    ->  EstadoA2A = "canceled",
+        Artifact = null
+    ;   (   estado(UserID, FaseFinal, CtxFinal, _) -> true ; FaseFinal = buscar_tramite, CtxFinal = Ctx0   ),
+        estado_a2a(FaseFinal, CtxFinal, EstadoA2A0, Artifact0),
+        (   tramite_en_espera(UserID, _, _, CtxEspera),
+            get_dict(deep_link_verificacion, CtxEspera, DeepLink)
+        ->  EstadoA2A = "auth-required",
+            Artifact = _{name:"identificacion-qr",
+                         parts:[ _{kind:"text",
+                                   text:"Escaneá este QR con la app de identidad para verificarte"},
+                                 _{kind:"file", file:_{uri:DeepLink, mimeType:"text/uri-list"}} ]}
+        ;   EstadoA2A = EstadoA2A0,
+            Artifact = Artifact0
+        )
     ),
     %%%%%%% log %%%%%%%%
     format(user_output, "[A2A] responde ~s estado=~w~n", [RS, EstadoA2A]),
@@ -441,13 +454,12 @@ chat_loop :-
 
 dialogo(UserID, Line, Respuesta) :-
     estado(UserID, Fase, _, _), !,
-    string_codes(Line, LineS),
-    % Cancelar diálogo globalmente
-    (   phrase((..., terminar, ...), LineS)
-    ->  Respuesta = "Gracias por usar el asistente. ¡Hasta luego!",
-        retractall_estado(UserID, _, _, _)
-    ;
-        procesar_fase(UserID, Fase, Line, Respuesta)
+    (   es_despedida(Line)
+    ->  finalizar_conversacion(UserID, Respuesta)
+    ;   catch(procesar_fase(UserID, Fase, Line, Respuesta), Error,
+              (   format(user_output, "❌ Error en fase ~w para ~w: ~w~n", [Fase, UserID, Error]),
+                  Respuesta = "Lo siento, hubo un problema interno. ¿Podés repetir tu mensaje?"
+              ))
     ).
 
 % ——————————————————————————————————————
@@ -459,6 +471,22 @@ dialogo(UserID, Line, Respuesta) :-
     Contexto = _{historia: []},
     assert_estado(UserID, buscar_tramite, Contexto, []),
     dialogo(UserID, Line, Respuesta).
+
+
+% Mensaje canonico de despedida.  Se usa para que el proxy A2A pueda
+% mapear la despedida a TaskState "canceled" sin depender de la fase.
+mensaje_despedida("Gracias por usar el asistente. ¡Hasta luego!").
+
+es_mensaje_despedida(Texto) :-
+    mensaje_despedida(Canonico),
+    (   string(Texto) -> Texto == Canonico
+    ;   atom(Texto) -> atom_string(Texto, Canonico)
+    ;   fail
+    ).
+
+finalizar_conversacion(UserID, Respuesta) :-
+    mensaje_despedida(Respuesta),
+    retractall_estado(UserID, _, _, _).
 
 
 
@@ -474,100 +502,23 @@ dialogo(UserID, Line, Respuesta) :-
 
 procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
     retract_estado(UserID, buscar_tramite, Contexto, _),
-
-
     pendientes_usuario(UserID, Pendientes),
-
-    %%%%%%% log %%%%%%%%
-    %format(user_output,"tramites pendientes ~w~n",[Pendientes]),
-    %%%%%%% log %%%%%%%%
-
     append(Contexto.historia, [user-Line], Hist1),
-    resolver_intencion_llm( Hist1, Pendientes, D ),
-
-    %%%%%%% log %%%%%%%%
-    %format(user_output,"accion de la intencion  ~s~n",[D.accion]),
-    %format(user_output,"respuesta de la intencion  ~s~n",[D.respuesta]),
-    %format(user_output,"resto del json  ~w~n",[D]),
-    %%%%%%% log %%%%%%%%
-
-    (
-        D.accion == "retomar_pendiente",
-        nonvar(D.tramite_id)
-        %%%%%%% log %%%%%%%%
-        %,format(user_output,"tramite a continuar ~w~n",[D.tramite_id])
-        %%%%%%% log %%%%%%%%
-    ->
-            %%%%%%% log %%%%%%%%
-            %format(user_output,"continuar tramite ~w~n",[D.tramite_id]),
-            %%%%%%% log %%%%%%%%
-            normalizar_tramite_id(D.tramite_id, TramiteIDA),
-            %	      atom_string(TramiteIDA,D.tramite_id),
-            retract_tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos),
-
-            %%%%%%% log %%%%%%%%
-            %format(user_output,"tramite pendiente a continuar ~w~n",[D.tramite_id]),
-            %%%%%%% log %%%%%%%%
-
-            assert_estado(UserID, confirmar_continuar_tramite, CtxPend, Pasos),
-            tramite_codigo_nombre_descripcion_motor(CtxPend.tramite, TramitePendiente, _, _),
-
-            %	      informacion_tramite(TramitePendiente, CtxPend.tramite, _,_, _,_),
-            format(string(Respuesta),
-                   "~s Tramite a continuar:  «~w»", [D.respuesta, TramitePendiente])
-    ;
-        D.accion == "iniciar_nuevo",
-
-        %%%%%%% log %%%%%%%%
-        %format(user_output,"tramite nuevo a iniciar ~n",[]),
-        %%%%%%% log %%%%%%%%
-
-        nonvar(D.tramite_nuevo),
-        normalizar_codigo_tramite(D.tramite_nuevo, TramiteCod),
-
-        %%%%%%% log %%%%%%%%
-        %format(user_output,"tramite nuevo a iniciar ~w~n",[D.tramite_nuevo]),
-        %%%%%%% log %%%%%%%%
-
-        tramite_codigo_nombre_descripcion_motor(TramiteCod, TramiteA, _, _)
-
-        %	    informacion_tramite(TramiteA,TramiteCod,_,_,_,_),
-
-        %%%%%%% log %%%%%%%%n
-        %format(user_output,"tramite nuevo a iniciar ~w~n",[TramiteA]),
-        %%%%%%% log %%%%%%%%
-
-        %	    tramite_disponible(TramiteA)
-
-        %%%%%%% log %%%%%%%%
-        %,format(user_output,"tramite nuevo disponible a iniciar ~w~n",[TramiteA])
-        %%%%%%% log %%%%%%%%
-
-    ->
-            format(string(Respuesta),
-                   "~s TRÁMITE: «~w» ¿confirma?", [D.respuesta, TramiteA]),
-            append(Hist1, [assistant-Respuesta], HistFinal),
-            assert_estado(UserID, confirmar_tramite,
-                          _{tramite:TramiteCod, historia:HistFinal}, [])
-    ;
-        D.accion == "preguntar"
-    ->
-            % preguntar
-            %%%%%%% log %%%%%%%%
-            %format(user_output,"preguntar tramite ~n",[]),
-            %%%%%%% log %%%%%%%%
-
-            Respuesta = D.respuesta,
-            append(Hist1, [assistant-D.respuesta], HistFinal),
-            assert_estado(UserID, buscar_tramite, _{historia:HistFinal}, [])
-    ;
-        D.accion == "error"
-    ->
-            Respuesta = D.respuesta,
-            HistFinal = [assistant-Respuesta],
-            assert_estado(UserID, buscar_tramite, _{historia:HistFinal}, [])
+    catch(resolver_intencion_llm(Hist1, Pendientes, D0), Error,
+          (   format(user_output, "❌ Error resolviendo intención para ~w: ~w~n", [UserID, Error]),
+              D0 = _{accion:"error", tramite_id:null, tramite_nuevo:null,
+                     respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
+          )),
+    decision_accion(D0, Accion),
+    (   catch(procesar_busqueda(UserID, Hist1, D0, Accion, Respuesta), Error2,
+              (   format(user_output, "❌ Error procesando búsqueda para ~w: ~w~n", [UserID, Error2]),
+                  fail
+              ))
+    ->  true
+    ;   retractall_estado(UserID, _, _, _),
+        assert_estado(UserID, buscar_tramite, Contexto, []),
+        Respuesta = "No pude procesar eso. ¿Me contás de nuevo qué trámite querés hacer?"
     ).
-
 
 
 % ——————————————————————————————————————
@@ -577,8 +528,9 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
 procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
     retract_estado(UserID, confirmar_tramite, Contexto, _),
     append(Contexto.historia, [user-Line], Hist1),
-    resolver_intencion_pos_neg(Hist1, D),
-    ( D.intent == "confirmar_si"
+    resolver_confirmacion(Line, Hist1, D),
+    decision_intent(D, Intent),
+    (   Intent == "confirmar_si"
     ->
           T = Contexto.tramite,
           tramite_codigo_nombre_descripcion_motor(T, Nombre, Descripcion, DictMotor),
@@ -595,15 +547,16 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
               format(string(Respuesta),
                      "Perfecto, ésta es la información para el trámite «~w»: ~n ~w ~n Instrucciones: ~w ~n  En que mas te puedo ayudar?", [Nombre, Descripcion, DictMotor.'Descripcion'])
           )
-    ;
-      D.intent == "confirmar_no"
+    ;   Intent == "confirmar_no"
     ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
         append(Contexto.historia, [user-Line], NuevaHistNo),
         append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
         assert_estado(UserID, buscar_tramite,
                       _{historia:HistFinal}, [])
+    ;   Intent == "despedida"
+    ->  finalizar_conversacion(UserID, Respuesta)
     ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-      assert_estado(UserID, confirmar_tramite, Contexto, [])
+        assert_estado(UserID, confirmar_tramite, Contexto, [])
     ).
 
 % ——————————————————————————————————————
@@ -613,12 +566,14 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
 procesar_fase(UserID, elegir_modo_tramite, Line, Respuesta) :-
     retract_estado(UserID, elegir_modo_tramite, Contexto, _),
     append(Contexto.historia, [user-Line], Hist1),
-    resolver_intencion_pos_neg(Hist1, D),
-    ( D.intent == "confirmar_si"
+    resolver_confirmacion(Line, Hist1, D),
+    decision_intent(D, Intent),
+    (   Intent == "confirmar_si"
     -> iniciar_ejecucion_tramite(UserID, Contexto, Respuesta)
-    ; D.intent == "confirmar_no"
-    -> Respuesta = "¡Entendido! Gracias por usar el asistente. ¡Hasta luego!",
-       retractall_estado(UserID, _, _, _)
+    ;   Intent == "confirmar_no"
+    ->  finalizar_conversacion(UserID, Respuesta)
+    ;   Intent == "despedida"
+    ->  finalizar_conversacion(UserID, Respuesta)
     ; Respuesta = "Perdón, ¿querés que lo ejecute o no?",
       assert_estado(UserID, elegir_modo_tramite, Contexto, [])
     ).
@@ -630,8 +585,9 @@ procesar_fase(UserID, elegir_modo_tramite, Line, Respuesta) :-
 procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
     retract_estado(UserID, confirmar_continuar_tramite, Contexto, P),
     append(Contexto.historia, [user-Line], Hist1),
-    resolver_intencion_pos_neg(Hist1, D),
-    ( D.intent == "confirmar_si"
+    resolver_confirmacion(Line, Hist1, D),
+    decision_intent(D, Intent),
+    (   Intent == "confirmar_si"
     ->
           T = Contexto.tramite,
           tramite_codigo_nombre_descripcion_motor(T, Nombre, _, _),
@@ -639,15 +595,17 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
           ejecutar_tramite(UserID, Contexto, P,
                            "Perfecto, continuamos con el trámite «~w». ~s",
                            Nombre, Respuesta)
-    ;   D.intent == "confirmar_no"
+    ;   Intent == "confirmar_no"
     ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
         append(Contexto.historia, [user-Line], NuevaHistNo),
         append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
         assert_estado(UserID, buscar_tramite,
                       _{historia:HistFinal}, []),
         assert_tramite_pendiente(UserID, Contexto.tramiteid, Contexto, P)
+    ;   Intent == "despedida"
+    ->  finalizar_conversacion(UserID, Respuesta)
     ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-      assert_estado(UserID, confirmar_continuar_tramite, Contexto, [])
+        assert_estado(UserID, confirmar_continuar_tramite, Contexto, [])
     ).
 
 % ——————————————————————————————————————
@@ -658,38 +616,89 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
 procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
     retract_estado(UserID, ejecutar_tramite, Contexto, Pasos),
     append(Contexto.historia, [user-Line], Hist1),
-    resolver_intencion_cont(Hist1, D),
-    (
-        D.intent == "pausar_tramite"
-    ->
-            TramiteID = Contexto.tramiteid,
-            assert_tramite_pendiente(UserID, TramiteID, Contexto, Pasos),
-            Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
-    ;
-        D.intent == "cancelar_tramite"
-    ->
-            Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
-    ;
-        % si es continuar o ambiguo, seguimos con el trámite
-        assert_estado(UserID, ejecutar_tramite, Contexto, Pasos),
-        fail
+    (   Pasos = [Paso|Restantes]
+    ->  ejecutar_paso_tramite(UserID, Contexto, Paso, Restantes, Line, Hist1, Respuesta)
+    ;   Respuesta = "El trámite ya está en proceso. ¿En qué más te puedo ayudar?"
     ).
 
 
-procesar_fase(UserID, ejecutar_tramite, Line, Respuesta) :-
-    retract_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes]),
-    string_codes(Line, LineS),
+ejecutar_paso_tramite(UserID, Contexto, Paso, Restantes, Line, Hist1, Respuesta) :-
+    Paso = paso(Id, _, _, Tipo, Opciones),
     T = Contexto.tramite,
     tramite_codigo_nombre_descripcion_motor(T, _, _, DictMotor),
-    %    informacion_tramite(T, Contexto.tramite, Asincronico,_Auth,_,_),
-    Paso = paso(Id, _, _, Tipo, _),
-    (   extraer_respuesta_por_tipo(Tipo, LineS, Line1)
+    (   catch(extraer_dato(Tipo, Opciones, Line, ok(Line1)), Error,
+              (   format(user_output, "❌ Error extrayendo dato para ~w: ~w~n", [UserID, Error]),
+                  fail
+              ))
     ->  assert_dato_tramite(UserID, DictMotor.codigochita, Contexto.tramiteid, Id, Line1),
         ejecutar_tramite(UserID, Contexto, Restantes, "~w~s", '', Respuesta)
-    ;   % Respuesta inválida → repreguntar
-        generar_repregunta_chatgpt(Contexto, Paso, Respuesta),
-        assert_estado(UserID, ejecutar_tramite,
-                      Contexto, [Paso|Restantes])
+    ;   % No se pudo extraer el dato: ahora se chequean los actos de control
+        % deterministas y, recien despues, el LLM como respaldo.
+        control_tramite(Line, Control),
+        (   Control == pausar
+        ->  TramiteID = Contexto.tramiteid,
+            assert_tramite_pendiente(UserID, TramiteID, Contexto, [Paso|Restantes]),
+            Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
+        ;   Control == cancelar
+        ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
+        ;   Control == continuar
+        ->  repregunta_deterministica(Paso, Respuesta),
+            assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes])
+        ;   catch(resolver_intencion_cont(Hist1, D), Error2,
+                  (   format(user_output, "❌ Error resolviendo control para ~w: ~w~n", [UserID, Error2]),
+                      D = _{intent:"ambiguo"}
+                  )),
+            decision_intent(D, Intent),
+            (   Intent == "despedida"
+            ->  finalizar_conversacion(UserID, Respuesta)
+            ;   Intent == "pausar_tramite"
+            ->  TramiteID = Contexto.tramiteid,
+                assert_tramite_pendiente(UserID, TramiteID, Contexto, [Paso|Restantes]),
+                Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
+            ;   Intent == "cancelar_tramite"
+            ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
+            ;   repregunta_deterministica(Paso, Respuesta),
+                assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes])
+            )
+        )
+    ).
+
+
+procesar_busqueda(UserID, Hist1, D, Accion, Respuesta) :-
+    respuesta_decision(D, "¿Qué trámite querés realizar?", RespuestaBase),
+    (   Accion == "despedida"
+    ->  finalizar_conversacion(UserID, Respuesta)
+    ;   Accion == "retomar_pendiente"
+    ->  decision_valor(D, tramite_id, null, TramiteIDVal),
+        (   TramiteIDVal \== null,
+            TramiteIDVal \== "",
+            normalizar_tramite_id(TramiteIDVal, TramiteIDA),
+            catch(tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos), _, fail),
+            catch(tramite_codigo_nombre_descripcion_motor(CtxPend.tramite, TramitePendiente, _, _), _, fail)
+        ->  retract_tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos),
+            assert_estado(UserID, confirmar_continuar_tramite, CtxPend, Pasos),
+            format(string(Respuesta), "~s Trámite a continuar: «~w»", [RespuestaBase, TramitePendiente])
+        ;   assert_estado(UserID, buscar_tramite, _{historia:Hist1}, []),
+            Respuesta = "No encontré ese trámite pendiente. ¿Qué trámite querés realizar?"
+        )
+    ;   Accion == "iniciar_nuevo"
+    ->  decision_valor(D, tramite_nuevo, null, TramiteNuevoVal),
+        (   TramiteNuevoVal \== null,
+            TramiteNuevoVal \== "",
+            normalizar_codigo_tramite(TramiteNuevoVal, TramiteCod),
+            catch(tramite_codigo_nombre_descripcion_motor(TramiteCod, TramiteA, _, _), _, fail)
+        ->  format(string(Respuesta), "~s TRÁMITE: «~w» ¿confirma?", [RespuestaBase, TramiteA]),
+            append(Hist1, [assistant-Respuesta], HistFinal),
+            assert_estado(UserID, confirmar_tramite, _{tramite:TramiteCod, historia:HistFinal}, [])
+        ;   assert_estado(UserID, buscar_tramite, _{historia:Hist1}, []),
+            Respuesta = "No pude identificar ese trámite. ¿Me decís el nombre completo?"
+        )
+    ;   Accion == "error"
+    ->  Respuesta = RespuestaBase,
+        assert_estado(UserID, buscar_tramite, _{historia:[assistant-Respuesta]}, [])
+    ;   Respuesta = RespuestaBase,
+        append(Hist1, [assistant-Respuesta], HistFinal),
+        assert_estado(UserID, buscar_tramite, _{historia:HistFinal}, [])
     ).
 
 
@@ -945,76 +954,158 @@ pendientes_usuario(UserID, Pendientes) :-
 resolver_intencion_llm( Historia, Pendientes, Decision) :-
     tramites_disponibles(Tramites),
     format(string(Prompt),
-           "Eres un asistente para trámites administrativos argentinos.\nTu tarea es identificar qué trámite quiere realizar el usuario.\n\n=== ESTRATEGIA DE ACOTAMIENTO ===\nSeguí estos pasos en orden:\n\nPASO 1 — Determinar continuar pendiente vs iniciar nuevo:\n  Si hay trámites PENDIENTES y el usuario no aclara su intención,\n  preguntale primero si quiere CONTINUAR uno pendiente o INICIAR algo nuevo.\n\nPASO 2 — Acotar por MUNICIPIO/ENTIDAD:\n  Si hay varios candidatos, revisá el campo \"entidad\" de cada trámite.\n  Preguntale al usuario de qué municipio/entidad es el trámite\n  (ej: \"¿El trámite es para el municipio de Escobar?\",\n   \"¿Es para la Municipalidad o para Perico?\").\n\nPASO 3 — Acotar por CATEGORÍA:\n  Si sigue habiendo varios, preguntá por la categoría del trámite\n  (ej: \"¿Buscás un certificado, una licencia, un permiso o una inscripción?\",\n   \"¿Es un duplicado o una renovación?\").\n\nPASO 4 — Confirmar por NOMBRE:\n  Si quedan pocas opciones, preguntá directamente por el nombre.\n\n=== LISTA DE TRÁMITES PENDIENTES (continuar): ===\n~s\n\n=== LISTA DE TRÁMITES DISPONIBLES (iniciar nuevo): ===\n~s\n\n=== REGLAS ===\n- \"retomar_pendiente\": SOLO para trámites de la lista PENDIENTES. Indicá su \"tramite_id\" (uuid de la sesión pendiente).\n- \"iniciar_nuevo\": SOLO para trámites de la lista DISPONIBLES. Indicá su \"codigo\" como \"tramite_nuevo\".\n- \"preguntar\": cuando no puedas determinar con certeza. IMPORTANTE: la respuesta debe ser una pregunta ESPECÍFICA de acotamiento según los pasos 1-4 (no una pregunta genérica).\n- Si la lista PENDIENTES está vacía, pasá directamente al paso 2 sin mencionarla.\n- Si la lista DISPONIBLES está vacía, informá que no hay trámites disponibles.\n- IMPORTANTE: los \"codigo\" y \"tramite_id\" son datos internos que el usuario NO conoce. Nunca los menciones en \"respuesta\": referite a los trámites únicamente por su nombre.\n\nRespondé ÚNICAMENTE en JSON (sin texto adicional):\n\n{\n  \"accion\": \"retomar_pendiente\" | \"iniciar_nuevo\" | \"preguntar\",\n  \"tramite_id\": \"uuid\" | null,\n  \"tramite_nuevo\": \"codigo\" | null,\n  \"respuesta\": \"texto breve de la pregunta de acotamiento o confirmación\"\n}\n\n",
+           "Eres un asistente para trámites administrativos argentinos.\nTu tarea es identificar qué trámite quiere realizar el usuario.\n\n=== ESTRATEGIA DE ACOTAMIENTO ===\nSeguí estos pasos en orden:\n\nPASO 1 — Determinar continuar pendiente vs iniciar nuevo:\n  Si hay trámites PENDIENTES y el usuario no aclara su intención,\n  preguntale primero si quiere CONTINUAR uno pendiente o INICIAR algo nuevo.\n\nPASO 2 — Acotar por MUNICIPIO/ENTIDAD:\n  Si hay varios candidatos, revisá el campo \"entidad\" de cada trámite.\n  Preguntale al usuario de qué municipio/entidad es el trámite\n  (ej: \"¿El trámite es para el municipio de Escobar?\",\n   \"¿Es para la Municipalidad o para Perico?\").\n\nPASO 3 — Acotar por CATEGORÍA:\n  Si sigue habiendo varios, preguntá por la categoría del trámite\n  (ej: \"¿Buscás un certificado, una licencia, un permiso o una inscripción?\",\n   \"¿Es un duplicado o una renovación?\").\n\nPASO 4 — Confirmar por NOMBRE:\n  Si quedan pocas opciones, preguntá directamente por el nombre.\n\n=== LISTA DE TRÁMITES PENDIENTES (continuar): ===\n~s\n\n=== LISTA DE TRÁMITES DISPONIBLES (iniciar nuevo): ===\n~s\n\n=== REGLAS ===\n- \"retomar_pendiente\": SOLO para trámites de la lista PENDIENTES. Indicá su \"tramite_id\" (uuid de la sesión pendiente).\n- \"iniciar_nuevo\": SOLO para trámites de la lista DISPONIBLES. Indicá su \"codigo\" como \"tramite_nuevo\".\n- \"despedida\": SOLO si el usuario se está despidiendo (chau, hasta luego, nos vemos, me voy, gracias por todo). Indicá \"respuesta\" con una despedida breve.\n- \"preguntar\": cuando no puedas determinar con certeza. IMPORTANTE: la respuesta debe ser una pregunta ESPECÍFICA de acotamiento según los pasos 1-4 (no una pregunta genérica).\n- Si la lista PENDIENTES está vacía, pasá directamente al paso 2 sin mencionarla.\n- Si la lista DISPONIBLES está vacía, informá que no hay trámites disponibles.\n- IMPORTANTE: los \"codigo\" y \"tramite_id\" son datos internos que el usuario NO conoce. Nunca los menciones en \"respuesta\": referite a los trámites únicamente por su nombre.\n\nRespondé ÚNICAMENTE en JSON (sin texto adicional):\n\n{\n  \"accion\": \"retomar_pendiente\" | \"iniciar_nuevo\" | \"preguntar\" | \"despedida\",\n  \"tramite_id\": \"uuid\" | null,\n  \"tramite_nuevo\": \"codigo\" | null,\n  \"respuesta\": \"texto breve de la pregunta de acotamiento o confirmación\"\n}\n\n",
            [Pendientes, Tramites]),
     H2 = [system-Prompt|Historia],
-    (
-        call_llm_with_context(H2, R1) ->
-            normalizarjson(R1, R),
-            (
-
-                is_json_valid(R) ->
-
-                    atom_json_dict(R, Decision, [])
-            ;
-                Decision = _{accion:"preguntar", tramite_id:null, respuesta:R}
-
-            )
-        %% (
-        %%     atom_json_dict(R, Decision, []) -> true
-        %% ;
-        %% Decision = _{accion:"continuar",tramite_id:null, respuesta:R}
-        %% )
-    ;
-        Decision = _{accion:"error", tramite_id:null, respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
-
+    (   catch(call_llm_json(H2, R1), Error,
+              (   format(user_output, "❌ LLM búsqueda de trámite falló: ~w~n", [Error]),
+                  fail
+              ))
+    ->  normalizarjson(R1, R),
+        (   parsear_decision_llm(R, D0)
+        ->  normalizar_decision_busqueda(D0, Decision)
+        ;   Decision = _{accion:"preguntar", tramite_id:null, tramite_nuevo:null,
+                         respuesta:"No pude interpretar tu pedido. ¿Me contás qué trámite querés realizar?"}
+        )
+    ;   Decision = _{accion:"error", tramite_id:null, tramite_nuevo:null,
+                     respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
     ).
 
 
-normalizarjson(R, Resp) :-
-    (
-        sub_string(R, 0, 8, _, "```json\n") ->
-            string_length(R, N),
-            M is N - 12,
-            sub_string(R, 8, M, _, Resp)
-    ;
-        Resp = R
+%!  normalizarjson(+Texto, -Json) is det.
+%
+%   Extrae el primer objeto JSON de la respuesta del LLM, aunque venga
+%   envuelto en un fence, con texto antes/después o con saltos de línea
+%   distintos.
+normalizarjson(Texto0, Resp) :-
+    (   string(Texto0) -> S0 = Texto0
+    ;   atom(Texto0) -> atom_string(Texto0, S0)
+    ;   format(string(S0), "~w", [Texto0])
+    ),
+    string_codes(S0, Codes0),
+    (   append(_, [123|Despues], Codes0),
+        reverse(Despues, Rev),
+        append(_, [125|AntesRev], Rev),
+        reverse(AntesRev, Medio),
+        append(Medio, [125], Cuerpo),
+        RespCodes = [123|Cuerpo]
+    ->  string_codes(Resp, RespCodes)
+    ;   Resp = S0
     ).
 
-
-
-is_json_valid(R) :-
+%!  parsear_decision_llm(+Texto, -Dict) is semidet.
+parsear_decision_llm(Texto, Dict) :-
     catch(
-        (atom_json_dict(R, _, []), true),
-        error(syntax_error(_), _),
+        (   atom_json_dict(Texto, D0, []),
+            is_dict(D0)
+        ->  Dict = D0
+        ;   fail
+        ),
+        _,
         fail
     ).
 
+normalizar_decision_busqueda(D0, D) :-
+    decision_texto(D0, accion, "preguntar", Accion0),
+    (   memberchk(Accion0, ["retomar_pendiente","iniciar_nuevo","preguntar","despedida","error"])
+    ->  Accion = Accion0
+    ;   Accion = "preguntar"
+    ),
+    decision_valor(D0, tramite_id, null, TramiteID),
+    decision_valor(D0, tramite_nuevo, null, TramiteNuevo),
+    respuesta_decision(D0, "¿Qué trámite querés realizar?", Respuesta),
+    D = _{accion:Accion, tramite_id:TramiteID,
+          tramite_nuevo:TramiteNuevo, respuesta:Respuesta}.
+
+parsear_decision_intent(Texto, Permitidos, Decision) :-
+    (   catch(atom_json_dict(Texto, D0, []), _, fail),
+        is_dict(D0),
+        get_dict(intent, D0, I0),
+        I0 \== null,
+        catch(a_texto(I0, I), _, fail),
+        memberchk(I, Permitidos)
+    ->  Decision = _{intent:I}
+    ;   Decision = _{intent:"ambiguo"}
+    ).
+
+% Helpers para leer decisiones del LLM sin lanzar existence_error.
+a_texto(Texto, String) :-
+    (   string(Texto) -> String = Texto
+    ;   atom(Texto) -> atom_string(Texto, String)
+    ;   number(Texto) -> number_string(Texto, String)
+    ;   is_list(Texto) -> catch(string_codes(String, Texto), _, fail)
+    ;   format(string(String), "~w", [Texto])
+    ).
+
+decision_valor(D, Clave, Default, Valor) :-
+    (   is_dict(D), get_dict(Clave, D, V0)
+    ->  (   V0 == null -> Valor = Default ; Valor = V0 )
+    ;   Valor = Default
+    ).
+
+decision_texto(D, Clave, Default, Valor) :-
+    (   is_dict(D), get_dict(Clave, D, V0), V0 \== null,
+        catch(a_texto(V0, V), _, fail), V \== ""
+    ->  Valor = V
+    ;   Valor = Default
+    ).
+
+respuesta_decision(D, Default, Respuesta) :-
+    decision_texto(D, respuesta, Default, Respuesta).
+
+decision_accion(D, Accion) :-
+    decision_texto(D, accion, "preguntar", Accion).
+
+decision_intent(D, Intent) :-
+    decision_texto(D, intent, "ambiguo", Intent).
+
+%!  resolver_confirmacion(+Line, +Historia, -Decision) is det.
+%
+%   Resuelve sí/no de forma determinista.  El LLM se consulta solo cuando
+%   la utterance completa no es un sí/no claro.
+resolver_confirmacion(Line, Historia, D) :-
+    si_no(Line, Valor),
+    (   Valor == si -> D = _{intent:"confirmar_si"}
+    ;   Valor == no -> D = _{intent:"confirmar_no"}
+    ;   catch(resolver_intencion_pos_neg(Historia, D0), Error,
+              (   format(user_output, "❌ Error resolviendo confirmación: ~w~n", [Error]),
+                  D0 = _{intent:"ambiguo"}
+              )),
+        decision_intent(D0, Intent),
+        (   memberchk(Intent, ["confirmar_si","confirmar_no","despedida"])
+        ->  D = _{intent:Intent}
+        ;   D = _{intent:"ambiguo"}
+        )
+    ).
+
+
 resolver_intencion_pos_neg(Historia, Decision) :-
     format(string(Prompt),
-           "El usuario respondió a una confirmación dentro de un trámite.\n\nDebes determinar si la intención es:\n- confirmar_si  (afirmación clara)\n   → ej: \"sí\", \"si\", \"dale\", \"ok\", \"confirmo\", \"adelante\", \"correcto\", \"claro que sí\"\n- confirmar_no  (rechazo claro)\n   → ej: \"no\", \"para nada\", \"no gracias\", \"mejor no\", \"otro\", \"equivocado\"\n- ambiguo       (no queda claro, responde con otra pregunta o duda)\n   → ej: \"no sé\", \"tal vez\", \"depende\", \"cuéntame más\", \"y qué implica\", o una pregunta\n\nRespondé SOLO en JSON, sin texto adicional:\n\n{\n  \"intent\": \"confirmar_si\" | \"confirmar_no\" | \"ambiguo\"\n}", []),
+           "El usuario respondió a una confirmación dentro de un trámite.\n\nDebes determinar si la intención es:\n- confirmar_si  (afirmación clara)\n   → ej: \"sí\", \"si\", \"dale\", \"ok\", \"confirmo\", \"adelante\", \"correcto\", \"claro que sí\"\n- confirmar_no  (rechazo claro)\n   → ej: \"no\", \"para nada\", \"no gracias\", \"mejor no\", \"otro\", \"equivocado\"\n- despedida     (el usuario se está despidiendo)\n   → ej: \"chau\", \"hasta luego\", \"nos vemos\", \"me voy\", \"gracias por todo\"\n- ambiguo       (no queda claro, responde con otra pregunta o duda)\n   → ej: \"no sé\", \"tal vez\", \"depende\", \"cuéntame más\", \"y qué implica\", o una pregunta\n\nRespondé SOLO en JSON, sin texto adicional:\n\n{\n  \"intent\": \"confirmar_si\" | \"confirmar_no\" | \"despedida\" | \"ambiguo\"\n}", []),
     H2 = [system-Prompt|Historia],
-    catch(
-        (
-            call_llm_with_context(H2, R),
-            atom_json_dict(R, Decision, [])
-        ),
-        _,
-        Decision = _{intent:"ambiguo"}
+    (   catch(call_llm_json(H2, R0), Error,
+              (   format(user_output, "❌ LLM sí/no falló: ~w~n", [Error]),
+                  fail
+              ))
+    ->  normalizarjson(R0, R),
+        parsear_decision_intent(R,
+            ["confirmar_si","confirmar_no","despedida","ambiguo"], Decision)
+    ;   Decision = _{intent:"ambiguo"}
     ).
 
 
 resolver_intencion_cont(Historia, Decision) :-
     format(string(Prompt),
-           "El usuario está respondiendo durante la ejecución de un trámite.\n\nDeterminá la intención principal del usuario. Opciones válidas:\n\n- continuar          → está respondiendo el dato pedido o dando información solicitada\n   ej: \"mi cuit es 20-12345678-9\", \"sí, tengo turno\", \"es para la calle San Martín 123\"\n- pausar_tramite     → quiere hacerlo después, más tarde, pausar, retomar luego\n   ej: \"después\", \"más tarde\", \"lo dejo para luego\", \"pausa\", \"seguimos después\"\n- cancelar_tramite   → no quiere seguir con el trámite, quiere cancelar\n   ej: \"cancelar\", \"darse de baja\", \"no quiero seguir\", \"me arrepentí\", \"dejá así no más\"\n- ambiguo            → no es clara la intención (pregunta, duda, saludo, etc.)\n\nRespondé SOLO en JSON:\n\n{\n  \"intent\": \"continuar\" | \"pausar_tramite\" | \"cancelar_tramite\" | \"ambiguo\"\n}", []),
+           "El usuario está respondiendo durante la ejecución de un trámite.\n\nDeterminá la intención principal del usuario. Opciones válidas:\n\n- continuar          → está respondiendo el dato pedido o dando información solicitada\n   ej: \"mi cuit es 20-12345678-9\", \"sí, tengo turno\", \"es para la calle San Martín 123\"\n- pausar_tramite     → quiere hacerlo después, más tarde, pausar, retomar luego\n   ej: \"después\", \"más tarde\", \"lo dejo para luego\", \"pausa\", \"seguimos después\"\n- cancelar_tramite   → no quiere seguir con el trámite, quiere cancelar\n   ej: \"cancelar\", \"darse de baja\", \"no quiero seguir\", \"me arrepentí\", \"dejá así no más\"\n- despedida          → el usuario se está despidiendo\n   ej: \"chau\", \"hasta luego\", \"nos vemos\", \"me voy\", \"gracias por todo\"\n- ambiguo            → no es clara la intención (pregunta, duda, saludo, etc.)\n\nRespondé SOLO en JSON:\n\n{\n  \"intent\": \"continuar\" | \"pausar_tramite\" | \"cancelar_tramite\" | \"despedida\" | \"ambiguo\"\n}", []),
     H2 = [system-Prompt|Historia],
-    catch(
-        (
-            call_llm_with_context(H2, R),
-            atom_json_dict(R, Decision, [])
-        ),
-        _,
-        Decision = _{intent:"ambiguo"}
+    (   catch(call_llm_json(H2, R0), Error,
+              (   format(user_output, "❌ LLM control de trámite falló: ~w~n", [Error]),
+                  fail
+              ))
+    ->  normalizarjson(R0, R),
+        parsear_decision_intent(R,
+            ["continuar","pausar_tramite","cancelar_tramite","despedida","ambiguo"], Decision)
+    ;   Decision = _{intent:"ambiguo"}
     ).
 
 
@@ -1024,51 +1115,85 @@ resolver_intencion_cont(Historia, Decision) :-
 
 
 call_llm_with_context(HistMsgs, Response) :-
+    call_llm(HistMsgs, _{}, Response).
+
+% Variante para los clasificadores que esperan JSON.  El modo JSON se
+% habilita solo en proveedores que lo soportan; en el resto el parseo
+% tolerante de normalizarjson/2 hace el trabajo.
+call_llm_json(HistMsgs, Response) :-
+    call_llm(HistMsgs, _{response_format: _{type:"json_object"}}, Response).
+
+call_llm(HistMsgs, Extra, Response) :-
     current_provider(Provider),
     provider_data(Provider, Model, EnvVarForKey, ApiUrl),
     getenv(EnvVarForKey, Key),
-    build_json_dict(HistMsgs, Model, JSONDICT),
-    %%% log %%%%%%% log %%%%%%%%
-    %format(user_output,"json enviado a llm ~w~n",[JSONDICT]),
-    %%% log %%%%%%% log %%%%%%%%
-    http_post(ApiUrl,
-              json(JSONDICT),
-              ReplyDict,
-              [
-                  %		  request_header('Content-Type'='application/json'),
-                  authorization(bearer(Key)),
-                  %		
-                  application/json
-              ]),
-    %%% log %%%%%%% log %%%%%%%%
-    %format(user_output,"respuesta original de  llm ~w~n",[ReplyDict]),
-    %%% log %%%%%%% log %%%%%%%%
-    %% ReplyDict = json(RepyDictA),
-    %% format(user_output,"respuesta original de  llm json ~w~n",[RepyDictA.choices]),
-    %% RepyDictA.choices = [json(Dict1A)],
-    %% Dict1A.message = json(MsgA),	      
-    %% format(user_output,"response original  ~w~n",[MsgA.content]),
+    build_json_dict(HistMsgs, Model, BaseDict),
+    (   provider_json_mode(Provider)
+    ->  put_dict(Extra, BaseDict, JSONDICT)
+    ;   JSONDICT = BaseDict
+    ),
+    llm_intento(ApiUrl, Key, JSONDICT, 1, Response).
 
-    atom_json_term(Atom, ReplyDict, [as(string)]),
-    atom_json_dict(Atom, Dict, []),
+provider_json_mode(openai).
+provider_json_mode(deepseek).
+provider_json_mode(gemini).
+provider_json_mode(groq).
 
-    %%% log %%%%%%% log %%%%%%%%
-    %format(user_output,"respuesta original como dict  llm ~w~n",[Dict]),
-    %%% log %%%%%%% log %%%%%%%%
+llm_intento(ApiUrl, Key, JSONDICT, Intento, Response) :-
+    catch(
+        (   http_post(ApiUrl,
+                      json(JSONDICT),
+                      ReplyDict,
+                      [ authorization(bearer(Key)),
+                        application/json,
+                        timeout(15),
+                        status_code(Status)
+                      ]),
+            (   Status >= 200, Status < 300
+            ->  (   llm_extraer_respuesta(ReplyDict, Response)
+                ->  true
+                ;   throw(error(llm_respuesta_invalida, _))
+                )
+            ;   throw(error(llm_http_status(Status), _))
+            )
+        ),
+        Error,
+        (   format(user_output, "❌ LLM intento ~w falló: ~w~n", [Intento, Error]),
+            (   Intento < 2,
+                llm_reintentable(Error)
+            ->  llm_intento(ApiUrl, Key, JSONDICT, 2, Response)
+            ;   fail
+            )
+        )
+    ).
 
-    Dict.choices = [Dict1],
-    Response = Dict1.message.content.
+% Se reintenta una vez ante timeout, 429 o 5xx.  Un 4xx distinto de 429
+% no se reintenta porque la petición está mal formada.
+llm_reintentable(error(llm_http_status(Status), _)) :-
+    !,
+    (   Status == 429
+    ;   Status >= 500
+    ).
+llm_reintentable(_).
 
-%%% log %%%%%%% log %%%%%%%%	 
-%format(user_output,"response ~w~n",[Dict1.message.content]),
-%%% log %%%%%%% log %%%%%%%%
-
-
-%    extract_gpt_response(ReplyDict, Response),
-
-%%% log %%%%%%% log %%%%%%%%
-% format(user_output,"response 2 ~w~n",[Response]).
-%%% log %%%%%%% log %%%%%%%%
+llm_extraer_respuesta(ReplyDict0, Response) :-
+    (   is_dict(ReplyDict0)
+    ->  Dict = ReplyDict0
+    ;   (   string(ReplyDict0) -> Texto = ReplyDict0
+        ;   atom(ReplyDict0) -> Texto = ReplyDict0
+        ;   % http_post/4 con la opcion application/json devuelve json(Term).
+            catch(atom_json_term(Texto, ReplyDict0, [as(string)]), _, fail)
+        ),
+        catch(atom_json_dict(Texto, Dict0, []), _, fail),
+        Dict = Dict0
+    ),
+    get_dict(choices, Dict, [Choice|_]),
+    get_dict(message, Choice, Message),
+    get_dict(content, Message, Content0),
+    Content0 \== null,
+    catch(a_texto(Content0, Content), _, fail),
+    Content \== "",
+    Response = Content.
 
 
 
@@ -1093,29 +1218,163 @@ generar_pregunta_chatgpt(Contexto, Paso, Pregunta) :-
     Tramite = Contexto.tramite,
     tramite_codigo_nombre_descripcion_motor(Tramite, Nombre, _, _),
     Paso = paso(Codigo, NombreCampo, Caption, Tipo, Opciones),
-    (
-        pregunta_cache(Tramite, Codigo, Pregunta) -> true
-    ;
-        ( Opciones \== [] -> format(string(Texto), " Por favor incluir en la pregunta estas opciones de respuesta ~w", [Opciones]) ; Texto = "" ),
-        atomic_list_concat([
-                               "Genera una pregunta clara y amable para pedir al usuario un dato dentro del trámite:",
-                               Nombre, ".\n\n",
-                               "Nombre del campo: ", NombreCampo, "\n",
-                               "Tipo de dato: ", Tipo, "\n",
-                               "Descripción o título: ", Caption, "\n\n",
-                               "Pregunta:", Texto
-                           ], PromptChars), atom_string(PromptChars, Prompt),
-        catch(
-            (
-                call_llm_with_context([user-Prompt], Pregunta),
-                assertz(pregunta_cache(Tramite, Codigo, Pregunta))
-            ),
-            _Error,
-            (
-                Pregunta = Caption
-            )
+    pregunta_cache_version(Version),
+    (   pregunta_cache(Version, Tramite, Codigo, Cacheada),
+        sanitizar_pregunta(Cacheada, Pregunta)
+    ->  true
+    ;   retractall(pregunta_cache(Version, Tramite, Codigo, _)),
+        (   catch(generar_pregunta_llm(Nombre, NombreCampo, Caption, Tipo, Opciones, Generada),
+                  Error,
+                  (   format(user_output, "❌ Error generando pregunta para ~w/~w: ~w~n",
+                             [Tramite, Codigo, Error]),
+                      fail
+                  ))
+        ->  Pregunta = Generada,
+            assertz(pregunta_cache(Version, Tramite, Codigo, Pregunta))
+        ;   pregunta_deterministica(Paso, Pregunta)
         )
     ).
+
+generar_pregunta_llm(Nombre, NombreCampo, Caption, Tipo, Opciones, Pregunta) :-
+    (   is_list(Opciones), Opciones \== []
+    ->  opciones_legibles(Opciones, TextoOpciones),
+        format(string(Texto), " Por favor incluí en la pregunta estas opciones de respuesta: ~s", [TextoOpciones])
+    ;   Texto = ""
+    ),
+    atomic_list_concat([
+                           "Genera una pregunta clara y amable para pedir al usuario un dato dentro del trámite: ",
+                           Nombre, ".\n\n",
+                           "Nombre del campo: ", NombreCampo, "\n",
+                           "Tipo de dato: ", Tipo, "\n",
+                           "Descripción o título: ", Caption, "\n",
+                           "Opciones: ", Texto, "\n\n",
+                           "Devolvé solo la pregunta, sin explicaciones ni markdown."
+                       ], PromptChars),
+    atom_string(PromptChars, Prompt),
+    call_llm_with_context([user-Prompt], Generada0),
+    sanitizar_pregunta(Generada0, Pregunta).
+
+% Pregunta determinista de respaldo.  Se usa cuando el LLM falla o
+% devuelve algo que no parece una pregunta.
+pregunta_deterministica(Paso, Pregunta) :-
+    Paso = paso(_, NombreCampo, Caption, Tipo, Opciones),
+    texto_base(Caption, NombreCampo, Base),
+    detalle_por_tipo(Tipo, Opciones, Detalle),
+    (   Base == ""
+    ->  format(string(Pregunta), "¿Podés indicar el dato? ~s", [Detalle])
+    ;   format(string(Pregunta), "~s ~s", [Base, Detalle])
+    ).
+
+repregunta_deterministica(Paso, Pregunta) :-
+    pregunta_deterministica(Paso, Base),
+    format(string(Pregunta), "No pude interpretar tu respuesta. ~s", [Base]).
+
+texto_base(Caption, NombreCampo, Base) :-
+    (   Caption \== null, Caption \== "",
+        catch(a_texto(Caption, C), _, fail), C \== ""
+    ->  Base = C
+    ;   NombreCampo \== null,
+        catch(a_texto(NombreCampo, Base0), _, fail),
+        Base0 \== ""
+    ->  Base = Base0
+    ;   Base = ""
+    ).
+
+detalle_por_tipo(Tipo0, Opciones, Detalle) :-
+    (   catch(a_texto(Tipo0, Tipo), _, fail) -> true ; Tipo = "texto" ),
+    (   Tipo == "numero" -> Detalle = "Respondé solo con números."
+    ;   Tipo == "fecha" -> Detalle = "Indicá la fecha con formato DD/MM/AAAA."
+    ;   Tipo == "booleano" -> Detalle = "Respondé «sí» o «no»."
+    ;   is_list(Opciones), Opciones \== [] ->
+        opciones_legibles(Opciones, TextoOpciones),
+        format(string(Detalle), "Elegí una opción: ~s.", [TextoOpciones])
+    ;   Detalle = "Contame el dato con tus palabras."
+    ).
+
+opciones_legibles(Opciones, Texto) :-
+    findall(Etiqueta,
+            (   member(O, Opciones),
+                etiqueta_opcion(O, Etiqueta0),
+                catch(a_texto(Etiqueta0, Etiqueta), _, fail),
+                Etiqueta \== ""
+            ),
+            Etiquetas),
+    (   Etiquetas == []
+    ->  Texto = "(opciones disponibles)"
+    ;   atomic_list_concat(Etiquetas, ", ", Texto)
+    ).
+
+etiqueta_opcion(opcion(Valor, Etiqueta), Elegida) :-
+    !,
+    (   Etiqueta \== "", Etiqueta \== null -> Elegida = Etiqueta
+    ;   Elegida = Valor
+    ).
+etiqueta_opcion(Valor, Valor).
+
+%!  sanitizar_pregunta(+Texto, -Pregunta) is semidet.
+%
+%   Descarta preámbulos y markdown típicos de los LLM.  Si no pasa el
+%   filtro, el llamador usa la plantilla determinista.
+sanitizar_pregunta(Texto0, Pregunta) :-
+    catch(a_texto(Texto0, Texto1), _, fail),
+    split_string(Texto1, "\n\r\t", " \n\r\t", Partes0),
+    quitar_partes_vacias(Partes0, Partes),
+    Partes \== [],
+    atomics_to_string(Partes, " ", Texto2),
+    quitar_prefijo(Texto2, "Pregunta:", Texto3),
+    quitar_prefijo(Texto3, "Respuesta:", Texto4),
+    string_codes(Texto4, Codes0),
+    quitar_extremos(Codes0, [34, 39, 96, 42], Codes),
+    string_codes(Texto5, Codes),
+    split_string(Texto5, "\n\r\t", " \n\r\t", Partes2),
+    quitar_partes_vacias(Partes2, Partes3),
+    Partes3 \== [],
+    atomics_to_string(Partes3, " ", Pregunta),
+    Pregunta \== "",
+    string_length(Pregunta, Largo),
+    Largo =< 600,
+    string_lower(Pregunta, Lower),
+    \+ sub_string(Lower, _, _, _, "```"),
+    \+ (   member(Frase, ["claro, aqui", "claro, aquí", "aqui tienes", "aquí tienes",
+                          "aqui esta", "aquí está", "la pregunta es",
+                          "**opción", "**opcion", "opción 1", "opción 2", "opción 3",
+                          "opcion 1", "opcion 2", "opcion 3",
+                          "como modelo", "como asistente",
+                          "lo siento", "no puedo ayudar"]),
+           sub_string(Lower, _, _, _, Frase)
+       ).
+
+quitar_partes_vacias([], []).
+quitar_partes_vacias([""|Resto], Limpio) :-
+    !,
+    quitar_partes_vacias(Resto, Limpio).
+quitar_partes_vacias([Parte|Resto], [Parte|Limpio]) :-
+    quitar_partes_vacias(Resto, Limpio).
+
+quitar_prefijo(Texto, Prefijo, Resto) :-
+    string_lower(Texto, Lower),
+    string_lower(Prefijo, PrefijoLower),
+    (   sub_string(Lower, 0, _, _, PrefijoLower)
+    ->  string_length(PrefijoLower, N),
+        sub_string(Texto, N, _, 0, Resto0),
+        split_string(Resto0, "", " ", [Resto])
+    ;   Resto = Texto
+    ).
+
+quitar_extremos([C|Resto], Chars, Limpio) :-
+    memberchk(C, Chars),
+    !,
+    quitar_extremos(Resto, Chars, Limpio).
+quitar_extremos(Codes, Chars, Limpio) :-
+    reverse(Codes, Rev0),
+    quitar_extremos_rev(Rev0, Chars, Rev),
+    reverse(Rev, Limpio).
+
+quitar_extremos_rev([C|Resto], Chars, Limpio) :-
+    memberchk(C, Chars),
+    !,
+    quitar_extremos_rev(Resto, Chars, Limpio).
+quitar_extremos_rev(Codes, _, Codes).
 
 generar_repregunta_chatgpt(Contexto, Paso, Pregunta) :-
     Tramite = Contexto.tramite,
@@ -1149,24 +1408,64 @@ generar_repregunta_chatgpt(Contexto, Paso, Pregunta) :-
 
 
 
+pregunta_cache_version(2).
+
 guardar_preguntas_cache :-
-    open('pregunta_cache.pl', write, S),
-    findall(pregunta_cache(T, C, P), pregunta_cache(T, C, P), List),
-    portray_clauses(List, S).
+    Tmp = 'pregunta_cache.pl.tmp',
+    (   catch(escribir_cache_temporal(Tmp), Error1,
+              (   format(user_output, "❌ Error guardando caché de preguntas: ~w~n", [Error1]),
+                  catch(delete_file(Tmp), _, true),
+                  fail
+              ))
+    ->  catch(rename_file(Tmp, 'pregunta_cache.pl'), Error2,
+              (   format(user_output, "❌ Error renombrando caché de preguntas: ~w~n", [Error2]),
+                  catch(delete_file(Tmp), _, true)
+              ))
+    ;   true
+    ).
 
-portray_clauses([], S) :-
-    close(S).
+escribir_cache_temporal(Tmp) :-
+    pregunta_cache_version(V),
+    findall(pregunta_cache(V, T, C, P), pregunta_cache(V, T, C, P), List),
+    setup_call_cleanup(
+        open(Tmp, write, S, [encoding(utf8)]),
+        portray_clauses(List, S),
+        close(S)
+    ).
 
+portray_clauses([], _).
 portray_clauses([C|List], S) :-
     portray_clause(S, C),
     portray_clauses(List, S).
 
 
 cargar_preguntas_cache :-
-    (
-        exists_file('pregunta_cache.pl') ->
-            consult('pregunta_cache.pl')
-    ;
-        true
+    (   exists_file('pregunta_cache.pl')
+    ->  catch(cargar_cache_archivo('pregunta_cache.pl'), Error,
+              format(user_output, "⚠️ No se pudo cargar pregunta_cache.pl: ~w~n", [Error]))
+    ;   true
+    ).
+
+cargar_cache_archivo(Archivo) :-
+    setup_call_cleanup(
+        open(Archivo, read, S, [encoding(utf8)]),
+        leer_cache(S),
+        close(S)
+    ).
+
+leer_cache(S) :-
+    catch(read(S, T), Error,
+          (   format(user_output, "⚠️ Entrada inválida en pregunta_cache.pl: ~w~n", [Error]),
+              T = end_of_file
+          )),
+    (   T == end_of_file
+    ->  true
+    ;   (   T = pregunta_cache(V, Tram, Cod, Preg),
+            pregunta_cache_version(V),
+            sanitizar_pregunta(Preg, PreguntaLimpia)
+        ->  assertz(pregunta_cache(V, Tram, Cod, PreguntaLimpia))
+        ;   true
+        ),
+        leer_cache(S)
     ).
 
