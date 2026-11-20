@@ -107,11 +107,12 @@ categoria_de_nombre(_, "otro").
 
 directorio_tramites("./tramites").
 
-jsonfile -->  ...,".json".
-
-jsonfiles(F) :-
-    atom_codes(F,FC),
-    phrase(jsonfile,FC).
+%!  jsonfiles(+Archivo) is semidet.
+%
+%   Verdadero si Archivo termina en ".json".
+jsonfiles(Archivo) :-
+    atom(Archivo),
+    sub_atom(Archivo, _, _, 0, ".json").
 
 cargar_tramite_desde_json(A) :-
     directorio_tramites(D),
@@ -230,6 +231,14 @@ actualizar_tramite_gps(C, Dict, Variables) :-
 	)
     ).
 
+
+% Helpers DCG locales: no dependen de ~/.config/swi-prolog/init.pl.
+format_(S, A) -->
+    { format(codes(Cs), S, A) },
+    seq(Cs).
+
+seq([]) --> [].
+seq([C|Cs]) --> [C], seq(Cs).
 
 variable_a_string([],_) --> [].
 variable_a_string([PDict|Rest],Tab) -->

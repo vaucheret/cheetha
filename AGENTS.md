@@ -17,6 +17,7 @@ Alternativa: `flask_cloud_api_proxy_a2a.py` (8071), el mismo proxy pero actuando
 - **tramite_json.pl** — carga definiciones de trámites desde `tramites/*.json` locales y dos APIs remotas (RIL + GPS con auth por token)
 - **persistencia.pl** — hechos persistentes en SQLite (`estado`, `tramite_pendiente`, `tramite_en_espera`, `dato_tramite`, `usuario_identificado`)
 - **gramatica.pl** — parsers DCG para números (incl. spelling en español), fechas, booleanos
+- **nlu.pl** — capa de decisión determinista: modo `CHITA_NLU_MODE`, actos de diálogo, matching de trámites (typos/alias/abreviaturas) y shortlist para el fallback del LLM
 - **flask_cloud_api_proxy.py** — webhook de WhatsApp Cloud API, TTS (OpenAI), envío de PDF, enlaces DIDComm de identidad
 - **flask_cloud_api_proxy_a2a.py** — igual que el anterior pero como cliente A2A del bridge (puerto 8071, proceso `flask_a2a`); alternativa al directo
 - **kafka_bridge.py** — puentea Kafka `tramitesAsincronicos` → Prolog `/notificacion_tramite`
@@ -107,6 +108,11 @@ KAFKA_BRIDGE_URL=http://localhost:8090
 FLASKURL=https://<ngrok>.ngrok-free.app
 # Opcional (A2A): si se setea, Prolog la usa para /internal/update_task
 A2A_BRIDGE_URL=http://localhost:8001
+# Opcional (NLU): hybrid = reglas + LLM de respaldo (default),
+# llm = LLM siempre, rules = solo reglas sin llamadas al LLM
+CHITA_NLU_MODE=hybrid
+# Opcional: en hybrid, usar el LLM para redactar preguntas de datos (default 0 = deterministas)
+CHITA_PREGUNTAS_LLM=0
 # Opcional (proxy vía A2A): puerto de flask_cloud_api_proxy_a2a.py y URL que registra
 # como callback de push en el bridge para los resultados asíncronos
 A2A_FLASK_PORT=8071
@@ -136,12 +142,26 @@ set_provider(groq).      % openai/gpt-oss-20b
 set_provider(ollamalocal). % gemma4:latest (localhost:11434)
 ```
 
-## Máquina de estados del diálogo (chatbot.pl)
+## NLU y máquina de estados del diálogo (chatbot.pl + nlu.pl)
 
 3 fases: `buscar_tramite` → `confirmar_tramite` → `ejecutar_tramite`
 - Las transiciones de fase se gestionan con `assert_estado/4` / `retract_estado/4` (persistentes en SQLite `chatbot.db`)
-- El LLM resuelve la intención en cada fase (`resolver_intencion_llm`, `resolver_intencion_pos_neg`, `resolver_intencion_cont`)
-- Resultados de intención: `iniciar_nuevo`, `retomar_pendiente`, `preguntar`, `confirmar_si`, `confirmar_no`, `continuar`, `pausar_tramite`, `cancelar_tramite`
+
+### Modos de NLU (`CHITA_NLU_MODE`)
+
+| Modo | Búsqueda | Confirmación / control | Preguntas de datos |
+|------|----------|------------------------|--------------------|
+| `hybrid` (default) | reglas; LLM sólo si no hay match | reglas; LLM sólo si no hay acto | deterministas (`CHITA_PREGUNTAS_LLM=1` para LLM) |
+| `llm` | LLM siempre (catálogo completo, historial recortado) | reglas; LLM como respaldo | LLM con caché |
+| `rules` | sólo reglas, sin LLM | sólo reglas | deterministas |
+
+- `nlu.pl` resuelve actos de diálogo completos (`despedida`, `saludo`, `ayuda`, `afirmacion`, `negacion`, `pausa`, `cancelacion`, `reanudacion`, `ambiguo`) reutilizando `gramatica.pl`.
+- `candidatos_tramite/2` hace matching contra el catálogo vivo con normalización, alias (`manejar`→`conducir`), fuzzy por Levenshtein y penalización de `duplicado`/`renovación`.
+- El fallback híbrido manda al LLM sólo una shortlist (top 8) y los últimos 8 mensajes del historial.
+- Las confirmaciones y el control durante la ejecución usan `acto_dialogo/2`; el LLM sólo se consulta en `hybrid`/`llm` cuando la regla no reconoció la frase completa.
+- Pausa, cancelación y despedida conservan el progreso como `tramite_pendiente` (con `tramiteid` y pasos restantes); «continuar»/«retomar» lo reanuda. «No» en `confirmar_continuar_tramite` también conserva el pendiente.
+- Resultados de intención del LLM: `iniciar_nuevo`, `retomar_pendiente`, `preguntar`, `confirmar_si`, `confirmar_no`, `continuar`, `pausar_tramite`, `cancelar_tramite`
+- Las respuestas libres del LLM pasan por `sanitizar_respuesta_llm/2` (sin JSON, fences ni URLs, ≤400 caracteres); si no pasan, se usa la plantilla determinista.
 
 ## Endpoints principales (chatbot.pl:68-72)
 

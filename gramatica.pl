@@ -3,8 +3,10 @@
 			    terminar//0,
 			    es_despedida/1,
 			    si_no/2,
+			    es_ambiguo_explicito/1,
 			    control_tramite/2,
 			    normalizar_texto/2,
+			    tokens/2,
 			    extraer_respuesta_por_tipo/3,
 			    extraer_dato/4
 			]).
@@ -33,6 +35,10 @@ texto_a_string(Texto, String) :-
     ;   is_list(Texto) -> string_codes(String, Texto)
     ;   format(string(String), "~w", [Texto])
     ).
+
+% Coincide con cualquier secuencia de codigos (incluida la vacia).
+% Se define localmente para no depender de un init.pl del usuario.
+... --> [] | [_], ... .
 
 %!  normalizar_texto(+Texto, -Normalizado) is det.
 %
@@ -75,13 +81,13 @@ sin_acentos(S0, S1) :-
     maplist(sin_acento_codigo, C0, C1),
     string_codes(S1, C1).
 
-sin_acento_codigo(225, 97).    % á -> a
-sin_acento_codigo(233, 101).   % é -> e
-sin_acento_codigo(237, 105).   % í -> i
-sin_acento_codigo(243, 111).   % ó -> o
-sin_acento_codigo(250, 117).   % ú -> u
-sin_acento_codigo(252, 117).   % ü -> u
-sin_acento_codigo(241, 110).   % ñ -> n
+sin_acento_codigo(225, 97) :- !.    % á -> a
+sin_acento_codigo(233, 101) :- !.   % é -> e
+sin_acento_codigo(237, 105) :- !.   % í -> i
+sin_acento_codigo(243, 111) :- !.   % ó -> o
+sin_acento_codigo(250, 117) :- !.   % ú -> u
+sin_acento_codigo(252, 117) :- !.   % ü -> u
+sin_acento_codigo(241, 110) :- !.   % ñ -> n
 sin_acento_codigo(C, C).
 
 %!  tokens(+Texto, -Tokens) is det.
@@ -184,6 +190,17 @@ si_no(Texto, Valor) :-
     ->  Valor = no
     ;   Valor = ambiguo
     ).
+
+%!  es_ambiguo_explicito(+Texto) is semidet.
+%
+%   Verdadero solo si el usuario declaro ambiguedad con una frase conocida
+%   ("no se", "tal vez", "depende").  No confundir con si_no/2, que devuelve
+%   ambiguo tambien para cualquier frase desconocida.
+es_ambiguo_explicito(Texto) :-
+    tokens(Texto, Tokens),
+    Tokens \= [],
+    frases_ambiguas(Frases),
+    memberchk(Tokens, Frases).
 
 frases_ambiguas([
     ["no","se"],

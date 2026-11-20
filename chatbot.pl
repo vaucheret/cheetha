@@ -6,6 +6,7 @@
 :- use_module(library(lists)).
 :- use_module(tramite_json).
 :- use_module(gramatica).
+:- use_module(nlu).
 :- use_module(persistencia).
 :- use_module(readenv, [load_dot_env/1]).
 :- use_module(library(json)).
@@ -21,6 +22,8 @@
 :- dynamic current_provider/1.
 
 :- dynamic pregunta_cache/4.
+
+:- discontiguous procesar_fase/4.
 
 
 
@@ -484,16 +487,50 @@ es_mensaje_despedida(Texto) :-
     ;   fail
     ).
 
+%!  finalizar_conversacion(+UserID, -Respuesta) is det.
+%
+%   Cierra la conversacion.  Si el usuario estaba completando un tramite,
+%   guarda el progreso como pendiente para poder retomarlo despues.
 finalizar_conversacion(UserID, Respuesta) :-
     mensaje_despedida(Respuesta),
+    conservar_progreso(UserID),
     retractall_estado(UserID, _, _, _).
 
+% Guarda el estado activo como pendiente, si la fase lo amerita.
+conservar_progreso(UserID) :-
+    catch(estado(UserID, Fase, Contexto, Pasos), _, fail),
+    fase_con_progreso(Fase),
+    !,
+    guardar_pendiente(UserID, Contexto, Pasos).
+conservar_progreso(_).
+
+fase_con_progreso(ejecutar_tramite).
+fase_con_progreso(confirmar_continuar_tramite).
+
+%!  guardar_pendiente(+UserID, +Contexto, +Pasos) is det.
+%
+%   Reemplaza el pendiente del mismo tramite_id para no duplicar hechos.
+guardar_pendiente(UserID, Contexto, Pasos) :-
+    (   catch(get_dict(tramiteid, Contexto, TramiteID), _, fail),
+        TramiteID \== null
+    ->  catch(retractall_tramite_pendiente(UserID, TramiteID, _, _), _, true),
+        catch(assert_tramite_pendiente(UserID, TramiteID, Contexto, Pasos), Error,
+              format(user_output, "❌ No se pudo guardar el pendiente de ~w: ~w~n",
+                     [UserID, Error]))
+    ;   format(user_output, "⚠️  Sin tramiteid, no se guarda pendiente para ~w~n", [UserID])
+    ).
+
+%!  volver_a_buscar(+UserID, +Historia, +Respuesta) is det.
+%
+%   Cierra el tramite en curso sin ejecutarlo y vuelve a la busqueda.
+volver_a_buscar(UserID, Historia, Respuesta) :-
+    append(Historia, [assistant-Respuesta], HistFinal),
+    assert_estado(UserID, buscar_tramite, _{historia:HistFinal}, []).
 
 
-% TODO: manejar "salir" o "cancelar" en cualquier fase
+
 % TODO: realizar phase de identificación de usuario antes de iniciar trámite
 % TODO: manejar multiples tramites en paralelo por usuario
-% TODO: poder pausear y reanudar trámites mientras el usuario busca datos 
 
 
 % ——————————————————————————————————————
@@ -502,9 +539,26 @@ finalizar_conversacion(UserID, Respuesta) :-
 
 procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
     retract_estado(UserID, buscar_tramite, Contexto, _),
-    pendientes_usuario(UserID, Pendientes),
     append(Contexto.historia, [user-Line], Hist1),
-    catch(resolver_intencion_llm(Hist1, Pendientes, D0), Error,
+    modo_nlu(Modo),
+    (   Modo == llm
+    ->  buscar_tramite_con_llm(UserID, Hist1, Respuesta)
+    ;   (   catch(buscar_tramite_determinista(UserID, Line, Hist1, Contexto, Modo, Respuesta), Error,
+                (   format(user_output, "❌ Error en búsqueda determinista para ~w: ~w~n", [UserID, Error]),
+                    fail
+                ))
+        ->  true
+        ;   responder_busqueda(UserID, Hist1, [],
+                "No pude procesar eso. ¿Me contás de nuevo qué trámite querés hacer?",
+                Respuesta)
+        )
+    ).
+
+% Camino historico: el LLM ve el catalogo completo en cada turno.
+buscar_tramite_con_llm(UserID, Hist1, Respuesta) :-
+    pendientes_usuario(UserID, Pendientes),
+    tramites_disponibles(Tramites),
+    catch(resolver_intencion_llm(Hist1, Pendientes, Tramites, D0), Error,
           (   format(user_output, "❌ Error resolviendo intención para ~w: ~w~n", [UserID, Error]),
               D0 = _{accion:"error", tramite_id:null, tramite_nuevo:null,
                      respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
@@ -515,9 +569,222 @@ procesar_fase(UserID, buscar_tramite, Line, Respuesta) :-
                   fail
               ))
     ->  true
-    ;   retractall_estado(UserID, _, _, _),
-        assert_estado(UserID, buscar_tramite, Contexto, []),
-        Respuesta = "No pude procesar eso. ¿Me contás de nuevo qué trámite querés hacer?"
+    ;   responder_busqueda(UserID, Hist1, [],
+                           "No pude procesar eso. ¿Me contás de nuevo qué trámite querés hacer?", Respuesta)
+    ).
+
+% Camino hibrido: reglas primero, LLM solo si no hay candidato confiable.
+buscar_tramite_determinista(UserID, Line, Hist1, Contexto, Modo, Respuesta) :-
+    (   get_dict(candidatos, Contexto, Candidatos),
+        is_list(Candidatos),
+        Candidatos \== []
+    ->  (   acto_dialogo(Line, afirmacion),
+            Candidatos = [Unico]
+        ->  ejecutar_seleccion_candidato(UserID, Unico, Hist1, Respuesta)
+        ;   acto_dialogo(Line, afirmacion)
+        ->  preguntar_por_candidatos(UserID, Candidatos, Hist1, Respuesta)
+        ;   resolver_candidato_previo(Line, Candidatos, Seleccion),
+            (   Seleccion = ok(Candidato)
+            ->  ejecutar_seleccion_candidato(UserID, Candidato, Hist1, Respuesta)
+            ;   Seleccion = varios(CandidatosRestantes)
+            ->  preguntar_por_candidatos(UserID, CandidatosRestantes, Hist1, Respuesta)
+            ;   buscar_tramite_por_acto(UserID, Line, Hist1, Modo, Respuesta)
+            )
+        )
+    ;   buscar_tramite_por_acto(UserID, Line, Hist1, Modo, Respuesta)
+    ).
+
+buscar_tramite_por_acto(UserID, Line, Hist1, Modo, Respuesta) :-
+    acto_dialogo(Line, Acto),
+    (   Acto == despedida
+    ->  finalizar_conversacion(UserID, Respuesta)
+    ;   Acto == saludo
+    ->  responder_busqueda(UserID, Hist1, [],
+            "¡Hola! Soy Chita, tu asistente de trámites. Contame qué trámite querés realizar.", Respuesta)
+    ;   Acto == ayuda
+    ->  responder_busqueda(UserID, Hist1, [],
+            "Puedo ayudarte a iniciar un trámite, continuar uno pendiente o consultar su estado. Por ejemplo: «licencia de conducir», «certificado de nacimiento» o «continuar».", Respuesta)
+    ;   Acto == afirmacion
+    ->  responder_busqueda(UserID, Hist1, [],
+            "¿Qué trámite querés realizar?", Respuesta)
+    ;   Acto == negacion
+    ->  responder_busqueda(UserID, Hist1, [],
+            "De acuerdo. ¿Qué trámite querés realizar?", Respuesta)
+    ;   Acto == pausa
+    ->  responder_busqueda(UserID, Hist1, [],
+            "Cuando quieras seguimos. ¿Qué trámite querés realizar?", Respuesta)
+    ;   Acto == cancelacion
+    ->  responder_busqueda(UserID, Hist1, [],
+            "De acuerdo. ¿Qué trámite querés realizar?", Respuesta)
+    ;   Acto == ambiguo
+    ->  responder_busqueda(UserID, Hist1, [],
+            "No te entendí. ¿Qué trámite querés realizar?", Respuesta)
+    ;   Acto == reanudacion
+    ->  retomar_pendientes(UserID, Hist1, Respuesta)
+    ;   buscar_tramite_por_nombre(UserID, Line, Hist1, Modo, Respuesta)
+    ).
+
+buscar_tramite_por_nombre(UserID, Line, Hist1, Modo, Respuesta) :-
+    (   intentar_retomar_por_nombre(UserID, Line, Hist1, Respuesta)
+    ->  true
+    ;   candidatos_tramite(Line, Resultado),
+        (   Resultado = unico(Candidato)
+        ->  confirmar_tramite_candidato(UserID, Candidato, Hist1, Respuesta)
+        ;   Resultado = varios(Candidatos)
+        ->  preguntar_por_candidatos(UserID, Candidatos, Hist1, Respuesta)
+        ;   Modo == hybrid
+        ->  buscar_tramite_con_shortlist(UserID, Line, Hist1, Respuesta)
+        ;   responder_busqueda(UserID, Hist1, [],
+                "No encontré ese trámite. ¿Me lo describís de otra forma o me decís el nombre completo?", Respuesta)
+        )
+    ).
+
+% Solo se prioriza un pendiente si el nombre coincide claramente.
+intentar_retomar_por_nombre(UserID, Line, Hist1, Respuesta) :-
+    pendientes_candidatos(UserID, Pendientes),
+    Pendientes \== [],
+    candidatos_en_catalogo(Line, Pendientes, Resultado),
+    Resultado = unico(Candidato),
+    Candidato.puntaje >= 85,
+    !,
+    retomar_pendiente_candidato(UserID, Candidato, Hist1, Respuesta).
+
+% Fallback hibrido: LLM con pocos candidatos y el historial reciente.
+buscar_tramite_con_shortlist(UserID, Line, Hist1, Respuesta) :-
+    shortlist_tramites(Line, 8, Shortlist),
+    (   lista_candidatos_json(Shortlist, Tramites)
+    ->  true
+    ;   Tramites = "{}"
+    ),
+    pendientes_usuario(UserID, Pendientes),
+    catch(resolver_intencion_llm(Hist1, Pendientes, Tramites, D0), Error,
+          (   format(user_output, "❌ Error resolviendo búsqueda con shortlist para ~w: ~w~n", [UserID, Error]),
+              D0 = _{accion:"preguntar", tramite_id:null, tramite_nuevo:null,
+                     respuesta:"No encontré ese trámite. ¿Me lo describís de otra forma?"}
+          )),
+    decision_accion(D0, Accion),
+    (   catch(procesar_busqueda(UserID, Hist1, D0, Accion, Respuesta), Error2,
+              (   format(user_output, "❌ Error procesando búsqueda con shortlist para ~w: ~w~n", [UserID, Error2]),
+                  fail
+              ))
+    ->  true
+    ;   responder_busqueda(UserID, Hist1, [],
+            "No encontré ese trámite. ¿Me lo describís de otra forma?", Respuesta)
+    ).
+
+preguntar_por_candidatos(UserID, Candidatos, Hist1, Respuesta) :-
+    (   Candidatos = [Primero|_],
+        get_dict(tipo, Primero, pendiente)
+    ->  mensaje_pendientes(Candidatos, Respuesta)
+    ;   mensaje_candidatos(Candidatos, Respuesta)
+    ),
+    responder_busqueda(UserID, Hist1, Candidatos, Respuesta).
+
+confirmar_tramite_candidato(UserID, Candidato, Hist1, Respuesta) :-
+    Codigo = Candidato.codigo,
+    (   catch(tramite_codigo_nombre_descripcion_motor(Codigo, Nombre, _, _), _, fail)
+    ->  format(string(Respuesta), "Encontré este trámite: «~w». ¿Querés iniciarlo?", [Nombre]),
+        append(Hist1, [assistant-Respuesta], HistFinal),
+        assert_estado(UserID, confirmar_tramite, _{tramite:Codigo, historia:HistFinal}, [])
+    ;   responder_busqueda(UserID, Hist1, [],
+            "No encontré ese trámite en el catálogo. ¿Me decís el nombre completo?", Respuesta)
+    ).
+
+ejecutar_seleccion_candidato(UserID, Candidato, Hist1, Respuesta) :-
+    (   get_dict(tipo, Candidato, pendiente)
+    ->  retomar_pendiente_candidato(UserID, Candidato, Hist1, Respuesta)
+    ;   confirmar_tramite_candidato(UserID, Candidato, Hist1, Respuesta)
+    ).
+
+retomar_pendiente_candidato(UserID, Candidato, Hist1, Respuesta) :-
+    TramiteID = Candidato.tramite_id,
+    (   catch(tramite_pendiente(UserID, TramiteID, Contexto, Pasos), _, fail)
+    ->  retract_tramite_pendiente(UserID, TramiteID, Contexto, Pasos),
+        catch(tramite_codigo_nombre_descripcion_motor(Contexto.tramite, Nombre, _, _), _, fail),
+        format(string(Respuesta), "Trámite pendiente: «~w». ¿Querés retomarlo?", [Nombre]),
+        append(Hist1, [assistant-Respuesta], HistFinal),
+        put_dict(historia, Contexto, HistFinal, ContextoNuevo),
+        assert_estado(UserID, confirmar_continuar_tramite, ContextoNuevo, Pasos)
+    ;   responder_busqueda(UserID, Hist1, [],
+            "No encontré ese trámite pendiente. ¿Qué trámite querés realizar?", Respuesta)
+    ).
+
+retomar_pendientes(UserID, Hist1, Respuesta) :-
+    pendientes_candidatos(UserID, Pendientes),
+    (   Pendientes == []
+    ->  responder_busqueda(UserID, Hist1, [],
+            "No tenés trámites pendientes. ¿Qué trámite querés realizar?", Respuesta)
+    ;   Pendientes = [Candidato]
+    ->  retomar_pendiente_candidato(UserID, Candidato, Hist1, Respuesta)
+    ;   mensaje_pendientes(Pendientes, Respuesta),
+        responder_busqueda(UserID, Hist1, Pendientes, Respuesta)
+    ).
+
+responder_busqueda(UserID, Hist1, Candidatos, Respuesta) :-
+    append(Hist1, [assistant-Respuesta], HistFinal),
+    put_dict(candidatos, _{historia:HistFinal}, Candidatos, Contexto),
+    assert_estado(UserID, buscar_tramite, Contexto, []).
+
+% Variante con mensaje explicito; equivale a unificar Respuesta y delegar.
+responder_busqueda(UserID, Hist1, Candidatos, Mensaje, Respuesta) :-
+    Respuesta = Mensaje,
+    responder_busqueda(UserID, Hist1, Candidatos, Respuesta).
+
+pendientes_candidatos(UserID, Candidatos) :-
+    findall(_{tipo:pendiente, tramite_id:TramiteID, codigo:Codigo,
+              nombre:Nombre, entidad:Entidad},
+            (   tramite_pendiente(UserID, TramiteID, Contexto, _),
+                catch(get_dict(tramite, Contexto, Codigo), _, fail),
+                catch(tramite_codigo_nombre_descripcion_motor(Codigo, Nombre0, _, Info), _, fail),
+                a_texto(Nombre0, Nombre),
+                (   is_dict(Info), get_dict(entidad, Info, Entidad0), Entidad0 \== ""
+                ->  Entidad = Entidad0
+                ;   Entidad = ""
+                )
+            ),
+            Candidatos0),
+    sort(Candidatos0, Candidatos).
+
+mensaje_candidatos(Candidatos, Respuesta) :-
+    (   Candidatos = [Unico]
+    ->  nombre_candidato(Unico, Nombre),
+        format(string(Respuesta),
+               "Encontré este trámite: «~s». ¿Querés iniciarlo? Respondé sí o no.", [Nombre])
+    ;   findall(Linea, linea_candidato(Candidatos, Linea), Lineas),
+        atomic_list_concat(Lineas, "\n", Lista),
+        format(string(Respuesta),
+               "Encontré varias opciones:\n~s\n\n¿Cuál querés? Respondé con el número o el nombre.",
+               [Lista])
+    ).
+
+mensaje_pendientes(Pendientes, Respuesta) :-
+    findall(Linea, linea_candidato(Pendientes, Linea), Lineas),
+    atomic_list_concat(Lineas, "\n", Lista),
+    format(string(Respuesta),
+           "Tenés estos trámites pendientes:\n~s\n\n¿Cuál querés retomar? Respondé con el número o el nombre.",
+           [Lista]).
+
+linea_candidato(Candidatos, Linea) :-
+    nth1(Indice, Candidatos, Candidato),
+    nombre_candidato(Candidato, Nombre0),
+    capitalizar(Nombre0, Nombre),
+    entidad_candidato(Candidato, Entidad),
+    (   Entidad \== ""
+    ->  format(string(Linea), "~w) ~s — ~s", [Indice, Nombre, Entidad])
+    ;   format(string(Linea), "~w) ~s", [Indice, Nombre])
+    ).
+
+nombre_candidato(Candidato, Nombre) :-
+    (   get_dict(nombre, Candidato, Nombre0)
+    ->  a_texto(Nombre0, Nombre)
+    ;   Nombre = "trámite"
+    ).
+
+entidad_candidato(Candidato, Entidad) :-
+    (   get_dict(entidad, Candidato, Entidad0),
+        Entidad0 \== ""
+    ->  a_texto(Entidad0, Entidad)
+    ;   Entidad = ""
     ).
 
 
@@ -549,10 +816,13 @@ procesar_fase(UserID, confirmar_tramite, Line, Respuesta) :-
           )
     ;   Intent == "confirmar_no"
     ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
-        append(Contexto.historia, [user-Line], NuevaHistNo),
-        append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
-        assert_estado(UserID, buscar_tramite,
-                      _{historia:HistFinal}, [])
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "pausar_tramite"
+    ->  Respuesta = "De acuerdo. Cuando quieras lo retomamos. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "cancelar_tramite"
+    ->  Respuesta = "De acuerdo, no iniciamos el trámite. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
     ;   Intent == "despedida"
     ->  finalizar_conversacion(UserID, Respuesta)
     ;   Respuesta = "Perdón, ¿podés responder sí o no?",
@@ -571,7 +841,14 @@ procesar_fase(UserID, elegir_modo_tramite, Line, Respuesta) :-
     (   Intent == "confirmar_si"
     -> iniciar_ejecucion_tramite(UserID, Contexto, Respuesta)
     ;   Intent == "confirmar_no"
-    ->  finalizar_conversacion(UserID, Respuesta)
+    ->  Respuesta = "De acuerdo, no lo ejecutamos. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "pausar_tramite"
+    ->  Respuesta = "De acuerdo. Cuando quieras lo retomamos. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "cancelar_tramite"
+    ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
     ;   Intent == "despedida"
     ->  finalizar_conversacion(UserID, Respuesta)
     ; Respuesta = "Perdón, ¿querés que lo ejecute o no?",
@@ -596,16 +873,21 @@ procesar_fase(UserID, confirmar_continuar_tramite, Line, Respuesta) :-
                            "Perfecto, continuamos con el trámite «~w». ~s",
                            Nombre, Respuesta)
     ;   Intent == "confirmar_no"
-    ->  Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
-        append(Contexto.historia, [user-Line], NuevaHistNo),
-        append(NuevaHistNo, [assistant-"De acuerdo, contame entonces qué trámite querés hacer."], HistFinal),
-        assert_estado(UserID, buscar_tramite,
-                      _{historia:HistFinal}, []),
-        assert_tramite_pendiente(UserID, Contexto.tramiteid, Contexto, P)
+    ->  guardar_pendiente(UserID, Contexto, P),
+        Respuesta = "De acuerdo, contame entonces qué trámite querés hacer.",
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "pausar_tramite"
+    ->  guardar_pendiente(UserID, Contexto, P),
+        Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos.",
+        volver_a_buscar(UserID, Hist1, Respuesta)
+    ;   Intent == "cancelar_tramite"
+    ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿Qué trámite querés realizar?",
+        volver_a_buscar(UserID, Hist1, Respuesta)
     ;   Intent == "despedida"
-    ->  finalizar_conversacion(UserID, Respuesta)
+    ->  guardar_pendiente(UserID, Contexto, P),
+        finalizar_conversacion(UserID, Respuesta)
     ;   Respuesta = "Perdón, ¿podés responder sí o no?",
-        assert_estado(UserID, confirmar_continuar_tramite, Contexto, [])
+        assert_estado(UserID, confirmar_continuar_tramite, Contexto, P)
     ).
 
 % ——————————————————————————————————————
@@ -632,40 +914,61 @@ ejecutar_paso_tramite(UserID, Contexto, Paso, Restantes, Line, Hist1, Respuesta)
               ))
     ->  assert_dato_tramite(UserID, DictMotor.codigochita, Contexto.tramiteid, Id, Line1),
         ejecutar_tramite(UserID, Contexto, Restantes, "~w~s", '', Respuesta)
-    ;   % No se pudo extraer el dato: ahora se chequean los actos de control
-        % deterministas y, recien despues, el LLM como respaldo.
-        control_tramite(Line, Control),
-        (   Control == pausar
-        ->  TramiteID = Contexto.tramiteid,
-            assert_tramite_pendiente(UserID, TramiteID, Contexto, [Paso|Restantes]),
-            Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
-        ;   Control == cancelar
-        ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
-        ;   Control == continuar
-        ->  repregunta_deterministica(Paso, Respuesta),
-            assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes])
-        ;   catch(resolver_intencion_cont(Hist1, D), Error2,
-                  (   format(user_output, "❌ Error resolviendo control para ~w: ~w~n", [UserID, Error2]),
-                      D = _{intent:"ambiguo"}
-                  )),
-            decision_intent(D, Intent),
-            (   Intent == "despedida"
-            ->  finalizar_conversacion(UserID, Respuesta)
-            ;   Intent == "pausar_tramite"
-            ->  TramiteID = Contexto.tramiteid,
-                assert_tramite_pendiente(UserID, TramiteID, Contexto, [Paso|Restantes]),
-                Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos."
-            ;   Intent == "cancelar_tramite"
-            ->  Respuesta = "De acuerdo, cancelamos el trámite. ¿En qué más te puedo ayudar?"
-            ;   repregunta_deterministica(Paso, Respuesta),
-                assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes])
-            )
+    ;   resolver_control_paso(Line, Hist1, Decision),
+        aplicar_control_paso(Decision, UserID, Contexto, Paso, Restantes, Respuesta)
+    ).
+
+%!  resolver_control_paso(+Line, +Historia, -Decision) is det.
+%
+%   Actos de control durante la recoleccion de datos.  Las reglas cubren las
+%   frases completas; en hybrid/llm el LLM solo se consulta si no hubo acto.
+resolver_control_paso(Line, Hist1, Decision) :-
+    acto_dialogo(Line, Acto),
+    (   Acto == despedida
+    ->  Decision = despedida
+    ;   Acto == pausa
+    ->  Decision = pausa
+    ;   Acto == cancelacion
+    ->  Decision = cancelacion
+    ;   Acto == reanudacion
+    ->  Decision = continuar
+    ;   Acto \== ninguno
+    ->  Decision = ambiguo
+    ;   modo_nlu(rules)
+    ->  Decision = ambiguo
+    ;   catch(resolver_intencion_cont(Hist1, D), Error,
+              (   format(user_output, "❌ Error resolviendo control para ~w: ~w~n", [Error]),
+                  D = _{intent:"ambiguo"}
+              )),
+        decision_intent(D, Intent),
+        (   memberchk(Intent, ["despedida","pausar_tramite","cancelar_tramite"])
+        ->  Decision = Intent
+        ;   Decision = ambiguo
         )
     ).
 
+aplicar_control_paso(pausa, UserID, Contexto, Paso, Restantes, Respuesta) :-
+    !,
+    guardar_pendiente(UserID, Contexto, [Paso|Restantes]),
+    Respuesta = "Perfecto 👍 Dejamos el trámite en pausa. Cuando quieras lo retomamos.".
+aplicar_control_paso(despedida, UserID, Contexto, Paso, Restantes, Respuesta) :-
+    !,
+    guardar_pendiente(UserID, Contexto, [Paso|Restantes]),
+    finalizar_conversacion(UserID, Respuesta).
+aplicar_control_paso(cancelacion, _, _, _, _, Respuesta) :-
+    !,
+    Respuesta = "De acuerdo, cancelamos el trámite. ¿Qué trámite querés realizar?".
+aplicar_control_paso(continuar, UserID, Contexto, Paso, Restantes, Respuesta) :-
+    !,
+    repregunta_deterministica(Paso, Respuesta),
+    assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes]).
+aplicar_control_paso(_, UserID, Contexto, Paso, Restantes, Respuesta) :-
+    repregunta_deterministica(Paso, Respuesta),
+    assert_estado(UserID, ejecutar_tramite, Contexto, [Paso|Restantes]).
+
 
 procesar_busqueda(UserID, Hist1, D, Accion, Respuesta) :-
-    respuesta_decision(D, "¿Qué trámite querés realizar?", RespuestaBase),
+    respuesta_decision_segura(D, "¿Qué trámite querés realizar?", RespuestaBase),
     (   Accion == "despedida"
     ->  finalizar_conversacion(UserID, Respuesta)
     ;   Accion == "retomar_pendiente"
@@ -676,8 +979,9 @@ procesar_busqueda(UserID, Hist1, D, Accion, Respuesta) :-
             catch(tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos), _, fail),
             catch(tramite_codigo_nombre_descripcion_motor(CtxPend.tramite, TramitePendiente, _, _), _, fail)
         ->  retract_tramite_pendiente(UserID, TramiteIDA, CtxPend, Pasos),
-            assert_estado(UserID, confirmar_continuar_tramite, CtxPend, Pasos),
-            format(string(Respuesta), "~s Trámite a continuar: «~w»", [RespuestaBase, TramitePendiente])
+            put_dict(historia, CtxPend, Hist1, CtxPendNuevo),
+            assert_estado(UserID, confirmar_continuar_tramite, CtxPendNuevo, Pasos),
+            format(string(Respuesta), "Trámite pendiente: «~w». ¿Querés retomarlo?", [TramitePendiente])
         ;   assert_estado(UserID, buscar_tramite, _{historia:Hist1}, []),
             Respuesta = "No encontré ese trámite pendiente. ¿Qué trámite querés realizar?"
         )
@@ -687,7 +991,7 @@ procesar_busqueda(UserID, Hist1, D, Accion, Respuesta) :-
             TramiteNuevoVal \== "",
             normalizar_codigo_tramite(TramiteNuevoVal, TramiteCod),
             catch(tramite_codigo_nombre_descripcion_motor(TramiteCod, TramiteA, _, _), _, fail)
-        ->  format(string(Respuesta), "~s TRÁMITE: «~w» ¿confirma?", [RespuestaBase, TramiteA]),
+        ->  format(string(Respuesta), "Encontré este trámite: «~w». ¿Querés iniciarlo?", [TramiteA]),
             append(Hist1, [assistant-Respuesta], HistFinal),
             assert_estado(UserID, confirmar_tramite, _{tramite:TramiteCod, historia:HistFinal}, [])
         ;   assert_estado(UserID, buscar_tramite, _{historia:Hist1}, []),
@@ -951,12 +1255,12 @@ pendientes_usuario(UserID, Pendientes) :-
 
 % El usuario escribió: «~s».
 
-resolver_intencion_llm( Historia, Pendientes, Decision) :-
-    tramites_disponibles(Tramites),
+resolver_intencion_llm(Historia, Pendientes, Tramites, Decision) :-
     format(string(Prompt),
-           "Eres un asistente para trámites administrativos argentinos.\nTu tarea es identificar qué trámite quiere realizar el usuario.\n\n=== ESTRATEGIA DE ACOTAMIENTO ===\nSeguí estos pasos en orden:\n\nPASO 1 — Determinar continuar pendiente vs iniciar nuevo:\n  Si hay trámites PENDIENTES y el usuario no aclara su intención,\n  preguntale primero si quiere CONTINUAR uno pendiente o INICIAR algo nuevo.\n\nPASO 2 — Acotar por MUNICIPIO/ENTIDAD:\n  Si hay varios candidatos, revisá el campo \"entidad\" de cada trámite.\n  Preguntale al usuario de qué municipio/entidad es el trámite\n  (ej: \"¿El trámite es para el municipio de Escobar?\",\n   \"¿Es para la Municipalidad o para Perico?\").\n\nPASO 3 — Acotar por CATEGORÍA:\n  Si sigue habiendo varios, preguntá por la categoría del trámite\n  (ej: \"¿Buscás un certificado, una licencia, un permiso o una inscripción?\",\n   \"¿Es un duplicado o una renovación?\").\n\nPASO 4 — Confirmar por NOMBRE:\n  Si quedan pocas opciones, preguntá directamente por el nombre.\n\n=== LISTA DE TRÁMITES PENDIENTES (continuar): ===\n~s\n\n=== LISTA DE TRÁMITES DISPONIBLES (iniciar nuevo): ===\n~s\n\n=== REGLAS ===\n- \"retomar_pendiente\": SOLO para trámites de la lista PENDIENTES. Indicá su \"tramite_id\" (uuid de la sesión pendiente).\n- \"iniciar_nuevo\": SOLO para trámites de la lista DISPONIBLES. Indicá su \"codigo\" como \"tramite_nuevo\".\n- \"despedida\": SOLO si el usuario se está despidiendo (chau, hasta luego, nos vemos, me voy, gracias por todo). Indicá \"respuesta\" con una despedida breve.\n- \"preguntar\": cuando no puedas determinar con certeza. IMPORTANTE: la respuesta debe ser una pregunta ESPECÍFICA de acotamiento según los pasos 1-4 (no una pregunta genérica).\n- Si la lista PENDIENTES está vacía, pasá directamente al paso 2 sin mencionarla.\n- Si la lista DISPONIBLES está vacía, informá que no hay trámites disponibles.\n- IMPORTANTE: los \"codigo\" y \"tramite_id\" son datos internos que el usuario NO conoce. Nunca los menciones en \"respuesta\": referite a los trámites únicamente por su nombre.\n\nRespondé ÚNICAMENTE en JSON (sin texto adicional):\n\n{\n  \"accion\": \"retomar_pendiente\" | \"iniciar_nuevo\" | \"preguntar\" | \"despedida\",\n  \"tramite_id\": \"uuid\" | null,\n  \"tramite_nuevo\": \"codigo\" | null,\n  \"respuesta\": \"texto breve de la pregunta de acotamiento o confirmación\"\n}\n\n",
+           "Eres un asistente para trámites administrativos argentinos.\nTu tarea es identificar qué trámite quiere realizar el usuario.\n\n=== ESTRATEGIA DE ACOTAMIENTO ===\nSeguí estos pasos en orden:\n\nPASO 1 — Determinar continuar pendiente vs iniciar nuevo:\n  Si hay trámites PENDIENTES y el usuario no aclara su intención,\n  preguntale primero si quiere CONTINUAR uno pendiente o INICIAR algo nuevo.\n\nPASO 2 — Acotar por MUNICIPIO/ENTIDAD:\n  Si hay varios candidatos, revisá el campo \"entidad\" de cada trámite.\n  Preguntale al usuario de qué municipio/entidad es el trámite\n  (ej: \"¿El trámite es para el municipio de Escobar?\",\n   \"¿Es para la Municipalidad o para Perico?\").\n\nPASO 3 — Acotar por CATEGORÍA:\n  Si sigue habiendo varios, preguntá por la categoría del trámite\n  (ej: \"¿Buscás un certificado, una licencia, un permiso o una inscripción?\",\n   \"¿Es un duplicado o una renovación?\").\n\nPASO 4 — Confirmar por NOMBRE:\n  Si quedan pocas opciones, preguntá directamente por el nombre.\n\n=== LISTA DE TRÁMITES PENDIENTES (continuar): ===\n~s\n\n=== LISTA DE TRÁMITES DISPONIBLES (iniciar nuevo): ===\n~s\n\n=== REGLAS ===\n- \"retomar_pendiente\": SOLO para trámites de la lista PENDIENTES. Indicá su \"tramite_id\" (uuid de la sesión pendiente).\n- \"iniciar_nuevo\": SOLO para trámites de la lista DISPONIBLES. Indicá su \"codigo\" como \"tramite_nuevo\".\n- \"despedida\": SOLO si el usuario se está despidiendo (chau, hasta luego, nos vemos, me voy, gracias por todo). Indicá \"respuesta\" con una despedida breve.\n- \"preguntar\": cuando no puedas determinar con certeza. IMPORTANTE: la respuesta debe ser una pregunta ESPECÍFICA de acotamiento según los pasos 1-4 (no una pregunta genérica).\n- Si la lista PENDIENTES está vacía, pasá directamente al paso 2 sin mencionarla.\n- Si la lista DISPONIBLES está vacía, pedí al usuario que describa el trámite con otras palabras.\n- IMPORTANTE: los \"codigo\" y \"tramite_id\" son datos internos que el usuario NO conoce. Nunca los menciones en \"respuesta\": referite a los trámites únicamente por su nombre.\n\nRespondé ÚNICAMENTE en JSON (sin texto adicional):\n\n{\n  \"accion\": \"retomar_pendiente\" | \"iniciar_nuevo\" | \"preguntar\" | \"despedida\",\n  \"tramite_id\": \"uuid\" | null,\n  \"tramite_nuevo\": \"codigo\" | null,\n  \"respuesta\": \"texto breve de la pregunta de acotamiento o confirmación\"\n}\n\n",
            [Pendientes, Tramites]),
-    H2 = [system-Prompt|Historia],
+    historial_para_llm(Historia, 8, Reciente),
+    H2 = [system-Prompt|Reciente],
     (   catch(call_llm_json(H2, R1), Error,
               (   format(user_output, "❌ LLM búsqueda de trámite falló: ~w~n", [Error]),
                   fail
@@ -969,6 +1273,18 @@ resolver_intencion_llm( Historia, Pendientes, Decision) :-
         )
     ;   Decision = _{accion:"error", tramite_id:null, tramite_nuevo:null,
                      respuesta:"Lo siento, no pude entender tu respuesta. ¿Podrías aclarar qué trámite te interesa?"}
+    ).
+
+%!  historial_para_llm(+Historia, +N, -Reciente) is det.
+%
+%   Recorta el historial a los ultimos N mensajes para no inflar el prompt.
+historial_para_llm(Historia, N, Reciente) :-
+    length(Historia, Largo),
+    (   Largo =< N
+    ->  Reciente = Historia
+    ;   Skip is Largo - N,
+        length(Prefijo, Skip),
+        append(Prefijo, Reciente, Historia)
     ).
 
 
@@ -1013,9 +1329,46 @@ normalizar_decision_busqueda(D0, D) :-
     ),
     decision_valor(D0, tramite_id, null, TramiteID),
     decision_valor(D0, tramite_nuevo, null, TramiteNuevo),
-    respuesta_decision(D0, "¿Qué trámite querés realizar?", Respuesta),
+    respuesta_decision_segura(D0, "¿Qué trámite querés realizar?", Respuesta),
     D = _{accion:Accion, tramite_id:TramiteID,
           tramite_nuevo:TramiteNuevo, respuesta:Respuesta}.
+
+% La respuesta del LLM se muestra solo si pasa el filtro; si no, se usa la
+% plantilla determinista.
+respuesta_decision_segura(D, Default, Respuesta) :-
+    respuesta_decision(D, Default, Respuesta0),
+    (   sanitizar_respuesta_llm(Respuesta0, Respuesta1)
+    ->  Respuesta = Respuesta1
+    ;   Respuesta = Default
+    ).
+
+%!  sanitizar_respuesta_llm(+Texto, -Respuesta) is semidet.
+%
+%   Deja pasar solo texto conversacional corto: sin fences, sin JSON, sin
+%   URLs y sin preambulos tipicos.  Si no pasa, el llamador usa la plantilla
+%   determinista.
+sanitizar_respuesta_llm(Texto0, Respuesta) :-
+    catch(a_texto(Texto0, Texto1), _, fail),
+    split_string(Texto1, "\n\r\t", " \n\r\t", Partes0),
+    quitar_partes_vacias(Partes0, Partes),
+    Partes \== [],
+    atomics_to_string(Partes, " ", Texto2),
+    string_codes(Texto2, Codes0),
+    quitar_extremos(Codes0, [34, 39, 96, 42], Codes),
+    string_codes(Texto3, Codes),
+    normalize_space(string(Texto4), Texto3),
+    Texto4 \== "",
+    string_length(Texto4, Largo),
+    Largo =< 400,
+    string_lower(Texto4, Lower),
+    \+ sub_string(Lower, _, _, _, "```"),
+    \+ sub_string(Lower, _, _, _, "{"),
+    \+ sub_string(Lower, _, _, _, "}"),
+    \+ sub_string(Lower, _, _, _, "http://"),
+    \+ sub_string(Lower, _, _, _, "https://"),
+    \+ sub_string(Lower, _, _, _, "como modelo"),
+    \+ sub_string(Lower, _, _, _, "as an ai"),
+    Respuesta = Texto4.
 
 parsear_decision_intent(Texto, Permitidos, Decision) :-
     (   catch(atom_json_dict(Texto, D0, []), _, fail),
@@ -1062,17 +1415,30 @@ decision_intent(D, Intent) :-
 %!  resolver_confirmacion(+Line, +Historia, -Decision) is det.
 %
 %   Resuelve sí/no de forma determinista.  El LLM se consulta solo cuando
-%   la utterance completa no es un sí/no claro.
+%   la utterance completa no es un sí/no claro ni una ambiguedad explicita.
 resolver_confirmacion(Line, Historia, D) :-
-    si_no(Line, Valor),
-    (   Valor == si -> D = _{intent:"confirmar_si"}
-    ;   Valor == no -> D = _{intent:"confirmar_no"}
+    acto_dialogo(Line, Acto),
+    (   Acto == afirmacion
+    ->  D = _{intent:"confirmar_si"}
+    ;   Acto == negacion
+    ->  D = _{intent:"confirmar_no"}
+    ;   Acto == despedida
+    ->  D = _{intent:"despedida"}
+    ;   Acto == pausa
+    ->  D = _{intent:"pausar_tramite"}
+    ;   Acto == cancelacion
+    ->  D = _{intent:"cancelar_tramite"}
+    ;   Acto == ambiguo
+    ->  D = _{intent:"ambiguo"}
+    ;   modo_nlu(rules)
+    ->  D = _{intent:"ambiguo"}
     ;   catch(resolver_intencion_pos_neg(Historia, D0), Error,
               (   format(user_output, "❌ Error resolviendo confirmación: ~w~n", [Error]),
                   D0 = _{intent:"ambiguo"}
               )),
         decision_intent(D0, Intent),
-        (   memberchk(Intent, ["confirmar_si","confirmar_no","despedida"])
+        (   memberchk(Intent, ["confirmar_si","confirmar_no","despedida",
+                               "pausar_tramite","cancelar_tramite"])
         ->  D = _{intent:Intent}
         ;   D = _{intent:"ambiguo"}
         )
@@ -1081,15 +1447,17 @@ resolver_confirmacion(Line, Historia, D) :-
 
 resolver_intencion_pos_neg(Historia, Decision) :-
     format(string(Prompt),
-           "El usuario respondió a una confirmación dentro de un trámite.\n\nDebes determinar si la intención es:\n- confirmar_si  (afirmación clara)\n   → ej: \"sí\", \"si\", \"dale\", \"ok\", \"confirmo\", \"adelante\", \"correcto\", \"claro que sí\"\n- confirmar_no  (rechazo claro)\n   → ej: \"no\", \"para nada\", \"no gracias\", \"mejor no\", \"otro\", \"equivocado\"\n- despedida     (el usuario se está despidiendo)\n   → ej: \"chau\", \"hasta luego\", \"nos vemos\", \"me voy\", \"gracias por todo\"\n- ambiguo       (no queda claro, responde con otra pregunta o duda)\n   → ej: \"no sé\", \"tal vez\", \"depende\", \"cuéntame más\", \"y qué implica\", o una pregunta\n\nRespondé SOLO en JSON, sin texto adicional:\n\n{\n  \"intent\": \"confirmar_si\" | \"confirmar_no\" | \"despedida\" | \"ambiguo\"\n}", []),
-    H2 = [system-Prompt|Historia],
+           "El usuario respondió a una confirmación dentro de un trámite.\n\nDebes determinar si la intención es:\n- confirmar_si  (afirmación clara)\n   → ej: \"sí\", \"si\", \"dale\", \"ok\", \"confirmo\", \"adelante\", \"correcto\", \"claro que sí\"\n- confirmar_no  (rechazo claro)\n   → ej: \"no\", \"para nada\", \"no gracias\", \"mejor no\", \"otro\", \"equivocado\"\n- pausar_tramite (quiere dejarlo para después)\n   → ej: \"después\", \"más tarde\", \"lo dejamos para otro momento\"\n- cancelar_tramite (no quiere seguir con el trámite)\n   → ej: \"cancelar\", \"no quiero seguir\", \"me arrepentí\"\n- despedida     (el usuario se está despidiendo)\n   → ej: \"chau\", \"hasta luego\", \"nos vemos\", \"me voy\", \"gracias por todo\"\n- ambiguo       (no queda claro, responde con otra pregunta o duda)\n   → ej: \"no sé\", \"tal vez\", \"depende\", \"cuéntame más\", \"y qué implica\", o una pregunta\n\nRespondé SOLO en JSON, sin texto adicional:\n\n{\n  \"intent\": \"confirmar_si\" | \"confirmar_no\" | \"pausar_tramite\" | \"cancelar_tramite\" | \"despedida\" | \"ambiguo\"\n}", []),
+    historial_para_llm(Historia, 8, Reciente),
+    H2 = [system-Prompt|Reciente],
     (   catch(call_llm_json(H2, R0), Error,
               (   format(user_output, "❌ LLM sí/no falló: ~w~n", [Error]),
                   fail
               ))
     ->  normalizarjson(R0, R),
         parsear_decision_intent(R,
-            ["confirmar_si","confirmar_no","despedida","ambiguo"], Decision)
+            ["confirmar_si","confirmar_no","pausar_tramite","cancelar_tramite",
+             "despedida","ambiguo"], Decision)
     ;   Decision = _{intent:"ambiguo"}
     ).
 
@@ -1097,7 +1465,8 @@ resolver_intencion_pos_neg(Historia, Decision) :-
 resolver_intencion_cont(Historia, Decision) :-
     format(string(Prompt),
            "El usuario está respondiendo durante la ejecución de un trámite.\n\nDeterminá la intención principal del usuario. Opciones válidas:\n\n- continuar          → está respondiendo el dato pedido o dando información solicitada\n   ej: \"mi cuit es 20-12345678-9\", \"sí, tengo turno\", \"es para la calle San Martín 123\"\n- pausar_tramite     → quiere hacerlo después, más tarde, pausar, retomar luego\n   ej: \"después\", \"más tarde\", \"lo dejo para luego\", \"pausa\", \"seguimos después\"\n- cancelar_tramite   → no quiere seguir con el trámite, quiere cancelar\n   ej: \"cancelar\", \"darse de baja\", \"no quiero seguir\", \"me arrepentí\", \"dejá así no más\"\n- despedida          → el usuario se está despidiendo\n   ej: \"chau\", \"hasta luego\", \"nos vemos\", \"me voy\", \"gracias por todo\"\n- ambiguo            → no es clara la intención (pregunta, duda, saludo, etc.)\n\nRespondé SOLO en JSON:\n\n{\n  \"intent\": \"continuar\" | \"pausar_tramite\" | \"cancelar_tramite\" | \"despedida\" | \"ambiguo\"\n}", []),
-    H2 = [system-Prompt|Historia],
+    historial_para_llm(Historia, 8, Reciente),
+    H2 = [system-Prompt|Reciente],
     (   catch(call_llm_json(H2, R0), Error,
               (   format(user_output, "❌ LLM control de trámite falló: ~w~n", [Error]),
                   fail
@@ -1214,7 +1583,17 @@ to_message_obj(Role-Text, _{role:SRole, content:Text}) :-
 % Generación de pregunta desde flujo
 % ——————————————————————————————————————
 
+%!  generar_pregunta_chatgpt(+Contexto, +Paso, -Pregunta) is det.
+%
+%   En modo llm (o hybrid con CHITA_PREGUNTAS_LLM=1) usa el LLM con cache.
+%   En el resto de los casos la pregunta es determinista.
 generar_pregunta_chatgpt(Contexto, Paso, Pregunta) :-
+    (   preguntas_llm_habilitadas
+    ->  generar_pregunta_con_cache(Contexto, Paso, Pregunta)
+    ;   pregunta_deterministica(Paso, Pregunta)
+    ).
+
+generar_pregunta_con_cache(Contexto, Paso, Pregunta) :-
     Tramite = Contexto.tramite,
     tramite_codigo_nombre_descripcion_motor(Tramite, Nombre, _, _),
     Paso = paso(Codigo, NombreCampo, Caption, Tipo, Opciones),
