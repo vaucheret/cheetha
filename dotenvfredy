@@ -18,10 +18,15 @@ GPS_TOKEN_URL=https://thinknetc3.ddns.net/chitaV2/APIGPS/api/Login/ObtenerToken?
 KAFKA_BROKER=66.70.179.213:9092
 KAFKA_TOPICO_ENVIO=tramitesPrueba
 KAFKA_TOPICO_RESPUESTA=tramitesAsincronicos
-FLASKURL=https://40c5-45-178-97-191.ngrok-free.app
+FLASKURL=
 
 
 
 # Opcional (Sovra): token Bearer y URL de PedirVerificacion (si no, usa defaults en chatbot.pl)
 SOVRA_TOKEN=kjedWBHKJHWEBJXNDLWKED87OWLAKJSBDA
 SOVRA_PEDIR_VERIFICACION_URL=https://thinknetc3.ddns.net/chitaV2/APISovraV2/api/Sovra/PedirVerificacion
+
+# NLU: hybrid = reglas + LLM de respaldo; llm = LLM siempre; rules = solo reglas
+CHITA_NLU_MODE=hybrid
+# En hybrid, usar el LLM para redactar preguntas de datos (0 = deterministas)
+CHITA_PREGUNTAS_LLM=0
