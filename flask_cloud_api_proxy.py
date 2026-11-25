@@ -140,36 +140,6 @@ def send_whatsapp_text(to, body):
         print("❌ Error al enviar mensaje a WhatsApp:", r.status_code, r.text)
     return r.status_code < 300
 
-# --- Enviar audio (TTS en MP3 con streaming) ---
-def text_to_speech_and_send(to, text):
-    try:
-        filename = f"{uuid.uuid4().hex}.mp3"
-        filepath = os.path.join("static", filename)
-
-        with client.audio.speech.with_streaming_response.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=text,
-            response_format="mp3"
-        ) as response:
-            response.stream_to_file(filepath)
-
-        audio_url = f"{request.host_url}static/{filename}"
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": normalize_whatsapp_number(to),
-            "type": "audio",
-            "audio": {"link": audio_url}
-        }
-        r = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
-        if r.status_code >= 300:
-            print("❌ Error enviando audio:", r.status_code, r.text)
-        else:
-            print("✅ Audio enviado:", audio_url)
-    except Exception as e:
-        print("❌ Error en TTS:", e)
-
 # --- Audio entrante ---
 def get_media_url(media_id):
     url = f"https://graph.facebook.com/v20.0/{media_id}"
@@ -192,7 +162,7 @@ def transcribe_audio(audio_bytes):
 
         with open(temp_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
+                model="gpt-transcribe",
                 file=f
             )
         return transcription.text
@@ -382,11 +352,9 @@ def webhook():
         sender_wa = msg.get("from")
         msg_type = msg.get("type")
         text = None
-        reply_mode = "text"
 
         if msg_type == "text":
             text = msg["text"]["body"]
-            reply_mode = "text"
         elif msg_type == "button":
             text = msg["button"]["text"]
             # if text == "Identificarme":
@@ -395,7 +363,6 @@ def webhook():
             #         send_whatsapp_text(sender_wa, link)
             #     else:
             #         send_whatsapp_text(sender_wa, "⚠️ No encontré tu link de identificación. Volvé a intentarlo.")
-            reply_mode = "text"
         elif msg_type == "interactive":
             # inter = msg.get("interactive", {})
             # if "button_reply" in inter:
@@ -412,7 +379,7 @@ def webhook():
                 
             # elif "list_reply" in inter:
             #     text = inter["list_reply"]["title"]
-            reply_mode = "text"
+            pass
         elif msg_type in ["audio", "voice"]:
             media_id = msg[msg_type]["id"]
             media_url = get_media_url(media_id)
@@ -420,7 +387,6 @@ def webhook():
             text = transcribe_audio(audio_bytes)
             print(f"📝 Transcripción: {text}")
             # send_whatsapp_text(sender_wa, f"📝 Transcripción: {text}")
-            reply_mode = "audio"
 
         if not text:
             send_whatsapp_text(sender_wa, "Recibí tu mensaje 👍 (tipo no soportado).")
@@ -515,13 +481,7 @@ def webhook():
                     print("✅ Botón interactivo enviado correctamente")
                 return jsonify({"status": "ok"}), 200
 
-        elif contiene_link(prolog_reply):
-            send_whatsapp_text(sender_wa, prolog_reply)
-        elif reply_mode == "text":
-            send_whatsapp_text(sender_wa, prolog_reply)
-        else:  # reply_mode == "audio"
-          #  send_whatsapp_text(sender_wa, f"📖 Respuesta: {prolog_reply}")
-          #  text_to_speech_and_send(sender_wa, prolog_reply)
+        else:
             send_whatsapp_text(sender_wa, prolog_reply)
 
         return jsonify({"status": "ok"}), 200

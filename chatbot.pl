@@ -29,14 +29,18 @@
 
 % Configuración de proveedores LLM
 % provider_data(ProviderName, ModelName, EnvVarForKey, ApiUrl).
+% gpt-5-mini se retiró el 2026-12-11.  gpt-6-luna es el más barato y rápido;
+% si la calidad conversacional no alcanza, usar gpt-6.1-terra (reemplazo
+% oficial de gpt-5-mini, ~10x más caro).
 
 provider_data(ollamalocal, "gemma4:latest", 'OLLAMA_API_KEY', 'http://localhost:11434/v1/chat/completions').
 provider_data(gpt4all, "Meta-Llama-3-8B-Instruct.Q4_0.gguf", 'GPT4ALL_API_KEY', 'http://localhost:4891/v1/chat/completions').
-provider_data(openai, "gpt-5-mini", 'OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions').
-provider_data(deepseek, "deepseek/deepseek-chat-v3.1:free", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
-provider_data(gemini, "google/gemini-2.0-flash-exp:free", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
+provider_data(openai, "gpt-6-luna", 'OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions').   % alternativa: "gpt-6.1-terra"
+provider_data(deepseek, "deepseek/deepseek-v4.1-flash", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
+provider_data(gemini, "google/gemini-2.5-flash-lite", 'OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions').
 provider_data(groq, "openai/gpt-oss-20b", 'GROQ_API_KEY', 'https://api.groq.com/openai/v1/chat/completions').
-provider_data(anthropic, "claude-3.0", 'ANTHROPIC_API_KEY', 'https://api.anthropic.com/v1/complete').
+% anthropic: la Messages API usa otro formato (x-api-key, /v1/messages) y no es
+% compatible con call_llm/3; requiere un adaptador propio.
 
 set_provider(Provider) :-   % openai , deepseek , gemini or groq
     retractall(current_provider(_)),

@@ -30,6 +30,7 @@ import requests
 import json
 import uuid
 import re
+import subprocess
 from openai import OpenAI
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
@@ -53,6 +54,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 GRAPH_URL = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
+# Los adjuntos se suben con la Media Upload API y se mandan por media_id.
+# Así no hace falta exponer una URL pública: el push del bridge llega por
+# localhost y un link local no lo puede descargar Meta.
+GRAPH_MEDIA_URL = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/media"
 HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
@@ -98,12 +103,17 @@ def _session_get(sender_wa):
 def _session_register(sender_wa, task):
     """Guarda/actualiza la sesión a partir de un Task devuelto por message/send.
     delivered_hist marca cuántos mensajes del history ya se entregaron a
-    WhatsApp (la respuesta síncrona se entrega por fuera del push)."""
+    WhatsApp (la respuesta síncrona se entrega por fuera del push).
+    delivered_arts hace lo propio con los artifacts (adjuntos), que el bridge
+    va acumulando en el mismo task."""
     with _sessions_lock:
+        previo = _sessions.get(sender_wa) or {}
+        mismo_task = previo.get("task_id") == task.get("id")
         _sessions[sender_wa] = {
             "context_id": task.get("contextId"),
             "task_id": task.get("id"),
             "delivered_hist": len(task.get("history") or []),
+            "delivered_arts": previo.get("delivered_arts", 0) if mismo_task else 0,
         }
         _task_to_sender[task.get("id")] = sender_wa
 
@@ -186,14 +196,17 @@ def a2a_push_deliver(task):
     print(f"📥 Push A2A task {task_id} estado={estado} → {sender_wa} "
           f"(nuevos: {len(history) - delivered})")
 
+    textos = []
     for m in history[delivered:]:
         if not isinstance(m, dict) or m.get("role") != "agent":
             continue
         texto = _text_from_parts(m.get("parts"))
         if texto:
             process_reply(sender_wa, texto)
+            textos.append(texto)
 
     _session_advance(sender_wa, len(history))
+    _deliver_files(sender_wa, task, textos)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -201,16 +214,10 @@ def a2a_push_deliver(task):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def process_reply(sender_wa, texto):
-    """Envía la respuesta a WhatsApp: PDF como documento, identificación como
-    botón CTA interactivo, resto como texto."""
-    pdf_link = extraer_link_pdf(texto)
-
-    if pdf_link:
-        # Mandar el PDF como documento y además el texto como apoyo
-        send_whatsapp_pdf(sender_wa, pdf_link)
-        time.sleep(2)
-        send_whatsapp_text(sender_wa, f"📄 Te envié el documento:\n{texto}")
-    elif "/identificar?" in texto:
+    """Envía el texto a WhatsApp: identificación como botón CTA interactivo,
+    resto como texto. Los adjuntos (artifacts del Task) se mandan aparte con
+    _deliver_files, que es la fuente estructurada que también usa /web."""
+    if "/identificar?" in texto:
         m = re.search(r'(https?://\S+)', texto)
         if m:
             link = m.group(1)
@@ -263,48 +270,216 @@ def send_whatsapp_cta_identificacion(sender_wa, prefix, link):
         print("✅ Botón interactivo enviado correctamente")
 
 
-# --- Enviar documento (PDF) ---
-def send_whatsapp_pdf(to, pdf_url, filename=None):
+# --- Adjuntos (documentos e imágenes) ---
+#
+# Los adjuntos llegan como artifacts del Task A2A (misma fuente que usa /web):
+#   artifacts[] = {name, parts:[{kind:"file", file:{uri, mimeType}}, ...]}
+# Se descargan, se suben con la Media Upload API y se mandan por media_id.
+# WhatsApp no acepta .svg (ni como documento ni como imagen): se rasteriza a
+# PNG con ImageMagick o Inkscape.
+
+MIMES_DOCUMENTO = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+}
+MIMES_IMAGEN = {"image/png", "image/jpeg", "image/webp"}
+
+
+def _borrar(path):
+    if not path:
+        return
     try:
+        os.remove(path)
+    except OSError:
+        pass
 
-        to_normalized = normalize_whatsapp_number(to).replace("+", "")
-        visible_filename = f"{to_normalized}.pdf"
 
-        if not filename:
-            filename = os.path.basename(pdf_url.split("?")[0]) or f"{uuid.uuid4().hex}.pdf"
-        local_filename = f"{uuid.uuid4().hex}_{filename}"
-        local_path = os.path.join("static", local_filename)
+def _descargar_temporal(url):
+    """Descarga la URL a static/ y devuelve (ruta, content_type|None)."""
+    r = requests.get(url, timeout=30)
+    if r.status_code != 200:
+        print(f"❌ Error al descargar adjunto {url}: {r.status_code}")
+        return None, None
+    ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+    nombre = os.path.basename(url.split("?")[0]) or uuid.uuid4().hex
+    path = os.path.join("static", f"{uuid.uuid4().hex}_{nombre}")
+    with open(path, "wb") as f:
+        f.write(r.content)
+    return path, ctype
 
-        # Descargar PDF
-        r = requests.get(pdf_url, timeout=20)
-        if r.status_code != 200:
-            print("❌ Error al descargar PDF:", r.status_code, r.text)
-            return False
-        with open(local_path, "wb") as f:
-            f.write(r.content)
 
-        # URL pública
-        pdf_public_url = f"{request.host_url}static/{local_filename}"
+def _svg_a_png(svg_path):
+    """Rasteriza un SVG a PNG. Devuelve la ruta del PNG o None."""
+    png_path = os.path.splitext(svg_path)[0] + ".png"
+    comandos = [
+        ["convert", "-background", "white", "-density", "150", svg_path, png_path],
+        ["magick", "-background", "white", "-density", "150", svg_path, png_path],
+        ["inkscape", "--export-type=png", f"--export-filename={png_path}",
+         "--export-background=white", svg_path],
+    ]
+    for cmd in comandos:
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=60)
+            if os.path.getsize(png_path) > 0:
+                return png_path
+        except Exception:
+            continue
+    return None
 
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": normalize_whatsapp_number(to),
-            "type": "document",
-            "document": {
-                "link": pdf_public_url,
-                "filename": visible_filename
-            }
-        }
-        res = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+
+def _subir_media(local_path, mime):
+    """Sube un archivo a la Media Upload API. Devuelve el media_id o None."""
+    try:
+        with open(local_path, "rb") as fh:
+            res = requests.post(
+                GRAPH_MEDIA_URL,
+                headers={"Authorization": f"Bearer {ACCESS_TOKEN}"},
+                data={"messaging_product": "whatsapp"},
+                files={"file": (os.path.basename(local_path), fh, mime)},
+                timeout=60,
+            )
         if res.status_code >= 300:
-            print("❌ Error enviando PDF:", res.status_code, res.text)
+            print("❌ Error subiendo media:", res.status_code, res.text[:300])
+            return None
+        return res.json().get("id")
+    except Exception as e:
+        print("❌ Error subiendo media:", e)
+        return None
+
+
+def _enviar_documento(to, local_path, mime="application/pdf", filename=None):
+    media_id = _subir_media(local_path, mime)
+    if not media_id:
+        return False
+    to_normalized = normalize_whatsapp_number(to)
+    if not filename:
+        filename = f"{to_normalized.replace('+', '')}.pdf"
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_normalized,
+        "type": "document",
+        "document": {"id": media_id, "filename": filename},
+    }
+    res = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+    if res.status_code >= 300:
+        print("❌ Error enviando documento:", res.status_code, res.text[:300])
+        return False
+    print(f"✅ Documento enviado (media {media_id})")
+    return True
+
+
+def _enviar_imagen(to, local_path, mime="image/png", caption=None):
+    media_id = _subir_media(local_path, mime)
+    if not media_id:
+        return False
+    imagen = {"id": media_id}
+    if caption:
+        imagen["caption"] = caption[:1024]
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": normalize_whatsapp_number(to),
+        "type": "image",
+        "image": imagen,
+    }
+    res = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
+    if res.status_code >= 300:
+        print("❌ Error enviando imagen:", res.status_code, res.text[:300])
+        return False
+    print(f"✅ Imagen enviada (media {media_id})")
+    return True
+
+
+def _enviar_adjunto(sender_wa, url, mime_hint=""):
+    """Descarga `url` y la manda a WhatsApp como documento o imagen.
+    Devuelve True si se envió algo."""
+    temporales = []
+    try:
+        path, ctype = _descargar_temporal(url)
+        if not path:
             return False
-        else:
-            print(f"✅ PDF enviado: {pdf_public_url}")
-            return True
+        temporales.append(path)
+
+        mime = ctype if "/" in (ctype or "") else ""
+        if not mime or mime == "application/octet-stream":
+            mime = (mime_hint or "").strip().lower()
+
+        if mime == "image/svg+xml" or path.lower().endswith(".svg"):
+            png_path = _svg_a_png(path)
+            if not png_path:
+                print(f"⚠️ No pude rasterizar el SVG: {url}")
+                return False
+            temporales.append(png_path)
+            path, mime = png_path, "image/png"
+
+        if mime in MIMES_IMAGEN:
+            return _enviar_imagen(sender_wa, path, mime)
+        if mime in MIMES_DOCUMENTO:
+            visible = (normalize_whatsapp_number(sender_wa).replace("+", "")
+                       + MIMES_DOCUMENTO[mime])
+            return _enviar_documento(sender_wa, path, mime, visible)
+        print(f"⚠️ Tipo no soportado por WhatsApp ({mime or 'desconocido'}): {url}")
+        return False
+    except Exception as e:
+        print("❌ Error enviando adjunto:", e)
+        return False
+    finally:
+        for p in temporales:
+            _borrar(p)
+
+
+def _deliver_files(sender_wa, task, textos=()):
+    """Manda a WhatsApp los adjuntos del Task que todavía no se enviaron.
+    Si el Task no trae artifacts, cae al link .pdf que venga en el texto."""
+    arts = task.get("artifacts") or []
+    with _sessions_lock:
+        already = (_sessions.get(sender_wa) or {}).get("delivered_arts", 0)
+    if already > len(arts):
+        already = 0  # el task se recreó (ej. bridge reiniciado): re-entregar
+
+    enviados = 0
+    for art in arts[already:]:
+        for part in (art or {}).get("parts", []):
+            file_ = part.get("file") or {}
+            uri = file_.get("uri") or ""
+            # Los data: URI son del QR inline que arma el bridge para /web.
+            if not isinstance(uri, str) or not uri.startswith(("http://", "https://")):
+                continue
+            if _enviar_adjunto(sender_wa, uri, file_.get("mimeType") or ""):
+                enviados += 1
+
+    with _sessions_lock:
+        if sender_wa in _sessions:
+            _sessions[sender_wa]["delivered_arts"] = len(arts)
+
+    # Fallback: sin artifacts, mantener el comportamiento viejo (link .pdf).
+    if not arts and not already:
+        for texto in textos:
+            pdf_link = extraer_link_pdf(texto)
+            if pdf_link and send_whatsapp_pdf(sender_wa, pdf_link):
+                enviados += 1
+                break
+    return enviados
+
+
+def send_whatsapp_pdf(to, pdf_url, filename=None):
+    """Descarga el PDF de la URL y lo manda como documento (por media_id)."""
+    path = None
+    try:
+        path, _ = _descargar_temporal(pdf_url)
+        if not path:
+            return False
+        return _enviar_documento(to, path, "application/pdf", filename)
     except Exception as e:
         print("❌ Error en send_whatsapp_pdf:", e)
         return False
+    finally:
+        _borrar(path)
 
 
 def extraer_link_pdf(text):
@@ -350,36 +525,6 @@ def send_whatsapp_text(to, body):
         print("❌ Error al enviar mensaje a WhatsApp:", r.status_code, r.text)
     return r.status_code < 300
 
-# --- Enviar audio (TTS en MP3 con streaming) ---
-def text_to_speech_and_send(to, text):
-    try:
-        filename = f"{uuid.uuid4().hex}.mp3"
-        filepath = os.path.join("static", filename)
-
-        with client.audio.speech.with_streaming_response.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=text,
-            response_format="mp3"
-        ) as response:
-            response.stream_to_file(filepath)
-
-        audio_url = f"{request.host_url}static/{filename}"
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": normalize_whatsapp_number(to),
-            "type": "audio",
-            "audio": {"link": audio_url}
-        }
-        r = requests.post(GRAPH_URL, headers=HEADERS, json=payload, timeout=25)
-        if r.status_code >= 300:
-            print("❌ Error enviando audio:", r.status_code, r.text)
-        else:
-            print("✅ Audio enviado:", audio_url)
-    except Exception as e:
-        print("❌ Error en TTS:", e)
-
 # --- Audio entrante ---
 def get_media_url(media_id):
     url = f"https://graph.facebook.com/v20.0/{media_id}"
@@ -402,7 +547,7 @@ def transcribe_audio(audio_bytes):
 
         with open(temp_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
+                model="gpt-transcribe",
                 file=f
             )
         return transcription.text
@@ -628,6 +773,7 @@ def webhook():
 
         print(f"🤖 Chita [{task.get('status', {}).get('state', '?')}]: {agent_text}")
         process_reply(sender_wa, agent_text)
+        _deliver_files(sender_wa, task, [agent_text])
 
         return jsonify({"status": "ok"}), 200
 

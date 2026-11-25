@@ -9,3 +9,6 @@
 /run/
 /logs/
 /chatbot.db
+__pycache__/
+*.pyc
+pregunta_cache.pl

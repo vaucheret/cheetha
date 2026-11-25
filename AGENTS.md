@@ -18,8 +18,8 @@ Alternativa: `flask_cloud_api_proxy_a2a.py` (8071), el mismo proxy pero actuando
 - **persistencia.pl** — hechos persistentes en SQLite (`estado`, `tramite_pendiente`, `tramite_en_espera`, `dato_tramite`, `usuario_identificado`)
 - **gramatica.pl** — parsers DCG para números (incl. spelling en español), fechas, booleanos
 - **nlu.pl** — capa de decisión determinista: modo `CHITA_NLU_MODE`, actos de diálogo, matching de trámites (typos/alias/abreviaturas) y shortlist para el fallback del LLM
-- **flask_cloud_api_proxy.py** — webhook de WhatsApp Cloud API, TTS (OpenAI), envío de PDF, enlaces DIDComm de identidad
-- **flask_cloud_api_proxy_a2a.py** — igual que el anterior pero como cliente A2A del bridge (puerto 8071, proceso `flask_a2a`); alternativa al directo
+- **flask_cloud_api_proxy.py** — webhook de WhatsApp Cloud API, transcripción de audios entrantes (`gpt-transcribe`), envío de PDF, enlaces DIDComm de identidad
+- **flask_cloud_api_proxy_a2a.py** — igual que el anterior pero como cliente A2A del bridge (puerto 8071, proceso `flask_a2a`). **Es el proxy en uso**; el directo se mantiene como backup
 - **kafka_bridge.py** — puentea Kafka `tramitesAsincronicos` → Prolog `/notificacion_tramite`
 - **sistema_motor.py** / **motor_simulado.py** — procesadores backend simulados
 - **chita_a2a_server.py** — bridge A2A (puerto 8001): expone a Chita como subagente vía protocolo A2A (JSON-RPC 2.0). Otros agentes (municipios) lo usan sin pasar por WhatsApp; también lo usa el proxy WhatsApp vía A2A
@@ -132,15 +132,24 @@ KAFKA_TOPICO_RESPUESTA=tramitesAsincronicos
 
 Dependencias Python (no hay requirements.txt): `flask`, `kafka-python`, `requests`, `python-dotenv`, `openai`, `phonenumbers`
 
-## Proveedores LLM (chatbot.pl:28-32)
+## Proveedores LLM (chatbot.pl:30-43, `provider_data/4`)
 
 ```prolog
-set_provider(openai).    % gpt-4o-mini
-set_provider(deepseek).  % deepseek/deepseek-chat-v3.1:free (via OpenRouter)
-set_provider(gemini).    % google/gemini-2.0-flash-exp:free (OpenRouter)
-set_provider(groq).      % openai/gpt-oss-20b
+set_provider(openai).      % gpt-6-luna (alternativa: gpt-6.1-terra)
+set_provider(deepseek).    % deepseek/deepseek-v4.1-flash (via OpenRouter)
+set_provider(gemini).      % google/gemma-4-31b-it:free (OpenRouter; es Gemma, no Gemini)
+set_provider(groq).        % openai/gpt-oss-20b
 set_provider(ollamalocal). % gemma4:latest (localhost:11434)
+set_provider(gpt4all).     % Meta-Llama-3-8B-Instruct.Q4_0.gguf (localhost:4891)
 ```
+
+- `gpt-5-mini` se retiró el 2026-12-11. `gpt-6-luna` es el más barato/rápido;
+  `gpt-6.1-terra` es el reemplazo oficial (mejor calidad, ~10x más caro).
+- Los `:free` de OpenRouter cambian seguido: si un proveedor falla con 404,
+  verificar el ID vigente en `GET https://openrouter.ai/api/v1/models`.
+- `anthropic` no está configurado: su Messages API usa otro formato de request
+  y autenticación (`x-api-key` + `/v1/messages`), incompatible con `call_llm/3`.
+  Si se necesita, hay que escribir un adaptador propio.
 
 ## NLU y máquina de estados del diálogo (chatbot.pl + nlu.pl)
 
@@ -197,7 +206,7 @@ El canal de salida (`enviar_resultado/5` en chatbot.pl) bifurca por `Contexto.ca
 
 ## Proxy WhatsApp vía A2A (flask_cloud_api_proxy_a2a.py, puerto 8071)
 
-Misma lógica de WhatsApp que el proxy directo (webhook, TTS, PDF, CTA de identificación, `/identificar`, `/identificacion_usuario`), pero actúa como **cliente A2A puro** del bridge, igual que cualquier agente externo:
+Misma lógica de WhatsApp que el proxy directo (webhook, transcripción de audios entrantes, PDF, CTA de identificación, `/identificar`, `/identificacion_usuario`), pero actúa como **cliente A2A puro** del bridge, igual que cualquier agente externo:
 
 - Turno del usuario → `message/send` (JSON-RPC 2.0) al bridge con `pushNotificationConfig.url` apuntando a su `A2A_PUSH_CALLBACK_URL` (`/a2a/push`).
 - Respuesta síncrona: texto de `task.status.message` → WhatsApp (PDF si hay link, CTA si contiene `/identificar?`).
@@ -231,3 +240,7 @@ SQLite vía `library(persistency)`, archivo: `chatbot.db`. Hechos: `estado/4`, `
 - Git remote: `https://github.com/vaucheret/cheetha.git`
 - Sin framework de testing automatizado. Scripts de test informales: `testurl.pl`, `test_url_asincronico.pl`.
 - Normalización de números de WhatsApp en `flask_cloud_api_proxy.py:105-116` — maneja prefijo argentino `549`.
+- Respuestas por voz (TTS) **desactivadas**: se quitó `text_to_speech_and_send` de ambos proxies. El modelo `gpt-4o-mini-tts` vence el 2027-01-06 y su reemplazo (`gpt-realtime-2.1-mini`, WebSocket) implica cambiar de API, no solo el nombre del modelo. Para reactivar la voz hay que implementar el flujo Realtime en un módulo aparte (opciones y costos relevados en la sesión de migración). La transcripción de audios entrantes sí sigue activa con `gpt-transcribe` (vence el 2027-02-26; su sucesor es `gpt-live-transcribe`, solo streaming).
+- **Adjuntos de trámites (`flask_cloud_api_proxy_a2a.py`).** Al completarse un trámite el motor manda URLs de certificados (`.../chita/PDFs/<hash>.pdf`, `.../chitaV2/Varios/QRs/<hash>.svg`). El proxy A2A los toma de `task.artifacts` —la misma fuente que `/web`— los descarga, los sube con la **Media Upload API** y los manda por `media_id`. No se construye ninguna URL pública: `request.host_url` en el push del bridge es `http://localhost:8071`, y Meta no puede descargar de ahí (el envío devolvía 202 pero el documento nunca llegaba). Dedup por `delivered_arts` en la sesión, ya que el bridge acumula artifacts en el mismo task. Los `.svg` se rasterizan a PNG porque WhatsApp sólo acepta `.jpeg/.png/.webp` como imagen y `.pdf/.doc(x)/.xls(x)/.ppt(x)/.txt` como documento.
+- Rasterizar SVG requiere ImageMagick (`convert` o `magick`) o `inkscape` en el PATH; si no hay ninguno, el adjunto se saltea con un warning. Los temporales se borran después de subirlos.
+- El proxy **directo** (backup) sigue con el comportamiento viejo: detecta el adjunto por regex del texto (`extraer_link_pdf`, exige `.pdf` literal) y arma el link con `request.host_url` (funciona porque se llama desde el webhook de ngrok o desde `FLASKURL`). No maneja `.svg`.
